@@ -7,13 +7,17 @@
 
 > **Pipeline data-driven modulare per l'analisi quantitativa, il ranking statistico e la strategia d'asta per il Fantacalcio (Classic e Mantra).**
 
+```
+#fantacalcio #fantasy-football #serie-a #machine-learning #ai #neural-networks #python #tensorflow #tensorflow-probability
+```
+
 ---
 
 ## 🎯 Panoramica del Progetto
 
 `fanta-lab` nasce per colmare il divario tra l'intuito soggettivo e l'analisi quantitativa avanzata all'asta del Fantacalcio. Integrando oltre **11 stagioni di dati storici** da `fantacalcio.it`, metriche avanzate di tiro e creazione occasioni (**xG/xA**) da `Understat`, e l'affidabilità medica/infortuni da `Transfermarkt`, il framework calcola uno **Score Composito** oggettivo e genera fogli di calcolo Excel multi-scheda pronti per guidare le decisioni all'asta in tempo reale.
 
-Ispirato a progetti innovativi come [fantabeto](https://github.com/uPeppe/fantabeto), `fanta-lab` sposta il focus dalla predizione match-by-match alla **valutazione pre-asta globale, profilazione del rischio fisico e individuazione di target sottovalutati**.
+Ispirato a progetti innovativi come [fantabeto](https://github.com/uPeppe/fantabeto), `fanta-lab` unisce la **valutazione pre-asta globale, la profilazione del rischio fisico e l'individuazione di target sottovalutati**, con l'obiettivo futuro di integrare anche simulazioni match-by-match bayesiane.
 
 ---
 
@@ -27,6 +31,7 @@ Ispirato a progetti innovativi come [fantabeto](https://github.com/uPeppe/fantab
 | **Analisi Infortuni** | Non modellata esplicitamente | **Scraping multithread 3y con malus fragilità fino a -15%** |
 | **Formato Output** | Notebook Jupyter con simulazione formazione | **CLI unificata + Excel multi-scheda formattato con schede per ruolo e legenda** |
 | **Supporto Mantra** | Limitato | **Nativo (colonne `role_mantra` e integrazione con quotazioni)** |
+| **Integrazione / Fork** | Base di partenza per modelli bayesiani | *In valutazione una fork / estensione per unire i due workflow* |
 
 ---
 
@@ -124,6 +129,20 @@ fanta-lab/
 │   └── dataset_sample.csv             # Dataset dimostrativo pronto all'uso
 └── data/                              # Directory dati (generati dalla pipeline)
 ```
+
+---
+
+## 🙏 Credits & Ingestion Sources
+
+Questo progetto è reso possibile grazie a strumenti, piattaforme e repository open-source della community:
+
+- **[fantabeto](https://github.com/uPeppe/fantabeto)** di [@uPeppe](https://github.com/uPeppe) — Progetto pionieristico sull'applicazione di reti neurali bayesiane al Fantacalcio. Fonte di grande ispirazione metodologica. È in valutazione la creazione di una fork / integrazione diretta per combinare lo score d'asta pre-stagionale con i modelli di lineup simulation bayesiana per singola giornata.
+- **[Fantacalcio.it](http://fantacalcio.it/)** — *The game!* Dati ufficiali, voti, pagelle storiche, liste calciatori, FVM e probabili formazioni.
+- **[FBref.com](http://fbref.com/)** — Miniera di statistiche avanzate per calciatori e squadre internazionali.
+- **[ff_prob](https://github.com/amiles2233/ff_prob)** — Ispirazione fondamentale per l'impiego di TensorFlow Probability e Bayesian Neural Networks nelle stime prestazionali del fantasy football.
+- **[Scrape-FBref-data](https://github.com/parth1902/Scrape-FBref-data)** — Riferimento per lo scraping automatizzato da FBref.
+- **[Understat.com](https://understat.com/)** — Modelli statistici avanzati di Expected Goals ($xG$), Expected Assists ($xA$) e shot-level metrics per la Serie A.
+- **[Transfermarkt.com](https://www.transfermarkt.com/)** — Database storico dettagliato su infortuni, tempi di recupero e affidabilità fisica.
 
 ---
 
