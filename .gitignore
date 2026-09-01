@@ -10,6 +10,13 @@ data/*.xlsx
 # Excel output files
 *.xlsx
 
+# Local Web App & Auction State (Beta - local only)
+app.py
+auction_state.json
+templates/
+static/
+web/
+
 # Python
 __pycache__/
 *.py[cod]
