@@ -30,6 +30,47 @@ Every pre-season, millions of fantasy managers sit around the draft table convin
 
 ---
 
+## Interactive Demo & Case Studies (Zero-Config Test)
+
+You do not need to scrape 11 years of data to see the framework in action. Run the standalone interactive demo in one command:
+
+```bash
+python demo.py
+```
+
+### Case Study 1: The Media Hype Trap vs The Statistical Gem
+
+Consider how the market prices a media darling vs an analytical goldmine:
+
+| Analytical Attribute | Undervalued Gem (e.g., Krstovic / Lauriente) | Overhyped Trap (e.g., G. Ramos / Big-Name Transfer) |
+|---|---|---|
+| **Official List Price** | **18 credits** | **27 credits** (+50% higher) |
+| **Rational Fair Price (VORP)** | **258 credits** (Elite volume) | **1 credit** (Replacement level) |
+| **Market Surplus Value** | **+240 credits (Massive Bargain)** | **-26 credits (Capital Destroyer)** |
+| **Expected Points (P50)** | **285.8 pts** (Ceiling: 321.7) | **49.9 pts** (Floor: 38.7) |
+| **3y Injury Days Lost** | **3 days** (Clean medical audit) | **116 days** (High fragility malus) |
+| **Draft Table Action** | **Primary Target (Bid Aggressively)** | **Avoid / Force Competitors to Overbid** |
+
+### Case Study 2: Quantile Uncertainty (Boom-or-Bust vs Rock-Solid Floor)
+
+Static averages deceive managers. Two midfielders might both project at 200 median points, but their probabilistic profiles dictate opposing roles:
+
+- **Boom-or-Bust Match-Winner (High Volatility Spread: 130+ pts)**: High P90 ceiling (320+ pts) driven by high xG shot volume. Ideal for tournament ceiling and decisive matchday spikes.
+- **Modifier Foundation Starter (Low Volatility Spread: <10 pts)**: Narrow interval between P10 and P90. Rock-solid weekly 6.5 baseline, zero rotation risk, essential for defense modifier leagues.
+
+### Case Study 3: Live 25-Player Knapsack Solver in <0.05s
+
+```
+[SOLVER RESULT] Optimal 25-Player Squad (Budget: 500 Credits | Spend: 494 Credits)
+  Projected Season Points: 5,467.3 pts (Floor: 4,094.9 pts | Ceiling: 5,935.4 pts)
+  - Goalkeepers (3/3) : Svilar (19cr), Carnesecchi (17cr), Maignan (15cr)
+  - Defenders   (8/8) : Dimarco (31cr), Wesley (18cr), Molina (18cr), Mancini (16cr)...
+  - Midfielders (8/8) : Paz (29cr), Calhanoglu (28cr), McTominay (27cr), Da Cunha (18cr)...
+  - Forwards    (6/6) : Martinez (33cr), Thuram (28cr), Yildiz (22cr), Krstovic (18cr)...
+```
+
+---
+
 ## Data Processing & ML Pipeline Architecture
 
 ```mermaid
