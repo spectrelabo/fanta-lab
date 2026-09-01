@@ -12,6 +12,7 @@ data/*.xlsx
 
 # Local Web App & Auction State (Beta - local only)
 app.py
+vercel.json
 auction_state.json
 templates/
 static/
