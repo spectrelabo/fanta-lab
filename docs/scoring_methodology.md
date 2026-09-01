@@ -1,51 +1,51 @@
-# Metodologia di Calcolo dello Score Composito — fanta-lab
+# Composite Scoring Methodology — fanta-lab
 
-Lo **Score Composito** di fanta-lab e' una metrica sintetica normalizzata nell'intervallo $[0.00, 1.00]$ che misura il valore atteso di un calciatore per l'asta del Fantacalcio, bilanciando rendimento storico, potenziale offensivo, integrita' fisica ed efficienza di costo.
+The **Composite Score** in `fanta-lab` is a normalized synthetic metric in the range $[0.00, 1.00]$ designed to quantify a player's auction value by balancing historical consistency, projected productivity, physical reliability, and market efficiency.
 
 ---
 
-## Formula Generale
+## Mathematical Formulation
 
 $$\text{Score}_{\text{base}} = \sum_{i} w_i \cdot \text{Norm}(F_i)$$
 
-$$\text{Score}_{\text{finale}} = \text{Score}_{\text{base}} \times \left(1.0 - 0.15 \times \text{Malus}_{\text{infortuni}}\right)$$
+$$\text{Score}_{\text{final}} = \text{Score}_{\text{base}} \times \left(1.0 - 0.15 \times \text{Injury Malus}\right)$$
 
 ---
 
-## Pesi delle Feature
+## Feature Weighting Scheme
 
-| Feature ($F_i$) | Peso ($w_i$) | Descrizione | Motivazione |
+| Feature ($F_i$) | Weight ($w_i$) | Description | Mathematical Objective |
 |---|---|---|---|
-| **MV Ponderata (3y)** | `0.20` | Media Voto ultimi 3 anni (pesi decrescenti 3x, 2x, 1x) | Cattura la costanza di prestazione pura depurata da exploit isolati. |
-| **MV Attesa Stagionale** | `0.20` | Media Voto stimata dal modello algoritmico per la stagione | Proietta il rendimento nel contesto tattico attuale. |
-| **Fantavoto Atteso** | `0.15` | Fantamedia attesa (voto base + bonus/malus) | Quantifica il potenziale realizzativo e di assist. |
-| **Probabilita' Bonus >= 8** | `0.20` | Probabilita' di ottenere un punteggio >= 8.0 a giornata | Premia i giocatori capaci di decidere le giornate (match-winner). |
-| **xG Medio (3y)** | `0.10` | Expected Goals medi per stagione da Understat | Identifica la qualita' e quantita' delle occasioni create/ricevute. |
-| **Disponibilita' %** | `0.10` | Percentuale presenze a voto su 38 giornate teoriche | Valuta l'affidabilita' nelle rotazioni e titolarita'. |
-| **Convenienza Prezzo** | `0.05` | 1.0 - Norm(Prezzo) (inversamente proporzionale) | Favorisce i profili a basso costo con alto rendimento potenziale. |
+| **Weighted Historical Rating (3y)** | `0.20` | Weighted 3-season average rating (decaying weights: $3\times, 2\times, 1\times$) | Eliminates variance from single-season outliers and rewards multi-year baseline performance. |
+| **Expected Seasonal Rating** | `0.20` | Model-projected baseline rating for the upcoming season | Adjusts for current tactical role, team strength, and age curve. |
+| **Expected Fantamedia** | `0.15` | Total projected fantasy average (baseline rating + bonus/malus) | Quantifies raw points-generating capacity. |
+| **High Bonus Probability (>= 8)** | `0.20` | Probability density of registering match-winning performances (score >= 8.0) | Rewards high-ceiling match-winners over low-ceiling floor players. |
+| **Expected Goals (xG) Average (3y)** | `0.10` | Three-year volume of Underlying Expected Goals | Identifies genuine shot volume and chance quality independent of finishing variance. |
+| **Pitch Availability %** | `0.10` | Percentage of matchdays with rated appearances out of 38 fixtures | Penalizes squad rotation risks and tactical benchwarmers. |
+| **Price Efficiency** | `0.05` | 1.0 - Norm(Price) (inversely proportional) | Yields a marginal boost to low-cost assets with elite underlying numbers. |
 
 ---
 
-## Modellazione del Rischio Infortuni
+## Medical Risk & Injury Modeling
 
-Il malus infortuni penalizza i calciatori soggetti a frequenti stop fisici, riducendo lo score finale fino a un massimo del **15%**:
+The injury malus parametrically reduces a player's final auction score by up to **15%** based on cumulative absence duration and severe injury history:
 
-$$\text{Penalita'}_{\text{giorni}} = \min\left(\frac{\text{Giorni Stop 3y}}{180}, 1.0\right)$$
+$$\text{Days Penalty} = \min\left(\frac{\text{Days Injured 3y}}{180}, 1.0\right)$$
 
-$$\text{Penalita'}_{\text{grave}} = \begin{cases} 0.30 & \text{se } \text{Max Giorni Singolo Stop} \ge 60 \\ 0.00 & \text{altrimenti} \end{cases}$$
+$$\text{Severity Penalty} = \begin{cases} 0.30 & \text{if } \text{Max Single Absence} \ge 60 \text{ days} \\ 0.00 & \text{otherwise} \end{cases}$$
 
-$$\text{Malus}_{\text{infortuni}} = \min\left(0.70 \cdot \text{Penalita'}_{\text{giorni}} + \text{Penalita'}_{\text{grave}}, 1.0\right)$$
+$$\text{Injury Malus} = \min\left(0.70 \cdot \text{Days Penalty} + \text{Severity Penalty}, 1.0\right)$$
 
-### Impatto sull'Asta:
-- Calciatori con **integrita' perfetta** ($\text{Malus} = 0.00$): Mantengono il 100% del loro score potenziale.
-- Calciatori con **alta fragilita'** ($\text{Malus} = 1.00$): Subiscono un taglio del -15% sullo score, abbassando la priorita' di rilancio all'asta.
+### Strategic Auction Impact:
+- **Ironman Assets** ($\text{Injury Malus} = 0.00$): Retain 100% of their theoretical statistical value.
+- **High-Risk Fragile Assets** ($\text{Injury Malus} = 1.00$): Experience a non-negotiable 15% valuation cut, preventing overbidding on hospital regulars.
 
 ---
 
-## Normalizzazione Min-Max
+## Robust Min-Max Feature Scaling
 
-Ogni feature continua $X$ viene scalata tramite:
+Each continuous feature $X$ is scaled to the unit interval $[0, 1]$ via:
 
 $$\text{Norm}(X) = \frac{X - \min(X)}{\max(X) - \min(X)}$$
 
-In caso di valori mancanti ($NaN$), vengono applicati valori neutrali di imputazione (es. $0.75$ per disponibilita', $0.0$ per metriche avanzate xG non disponibili per neopromossi o nuovi arrivi).
+Missing values ($NaN$) are imputed with neutral baseline priors (e.g., $0.75$ for availability, $0.0$ for advanced expected metrics for newly promoted or incoming foreign players).

@@ -1,34 +1,34 @@
-# Fonti Dati e Strategie di Acquisizione — fanta-lab
+# Data Sources and Ingestion Strategies — fanta-lab
 
-fanta-lab combina 4 fonti dati eterogenee per costruire un profilo quantitativo a 360 gradi di ogni calciatore di Serie A.
+`fanta-lab` combines four disparate data sources to construct a comprehensive quantitative profile for every player in the league.
 
 ---
 
-## Tabella Riassuntiva delle Fonti
+## Data Source Overview
 
-| Fonte | Dati Estratti | Metodo di Acquisizione | Copertura Storica |
+| Source | Extracted Attributes | Ingestion Method | Historical Coverage |
 |---|---|---|---|
-| **fantacalcio.it** | Voti storici, Fantamedie, Gol, Assist, Rigori, Ammonizioni, Espulsioni, Quotazioni ufficiali, FVM | Scraping HTML (BeautifulSoup) + Parsing Excel | 11 stagioni (2015/16 - 2025/26) + Stagione Attuale |
-| **Understat.com** | Expected Goals (xG), Expected Assists (xA), Non-penalty xG (npxG), Tiri p90, Passaggi chiave p90 | API REST interna (POST /main/getPlayersStats/) | Ultime 4 stagioni |
-| **Transfermarkt.com** | Giorni totali di infortunio, numero stop, motivo infortunio, infortuni gravi | Scraping asincrono multithread (ThreadPoolExecutor) con cache JSON locale | Ultime 3 stagioni |
-| **football-data.co.uk** | Risultati partite, tiri totali, tiri in porta, gol casa/trasferta | Download CSV diretto | Ultime 11 stagioni |
+| **Official League & Fantasy Source** | Historical ratings, Fantavotes, Goals, Assists, Penalties, Cards, Base Quotations, FVM | HTML Scraping (`BeautifulSoup`) + Excel Sheet Parsing | 11 Historical Seasons + Current Season |
+| **Understat.com** | Expected Goals (xG), Expected Assists (xA), Non-penalty xG (npxG), Shots p90, Key Passes p90 | Internal REST API (`POST /main/getPlayersStats/`) | Recent 4 Seasons |
+| **Transfermarkt.com** | Total days injured, count of injury events, medical diagnosis, severe injury indicators | Multithreaded Asynchronous Scraping (`ThreadPoolExecutor`) with local JSON cache | Recent 3 Seasons |
+| **football-data.co.uk** | Match results, total shots, shots on target, home/away goal aggregates | Direct CSV Download | 11 Historical Seasons |
 
 ---
 
-## Algoritmi di Risoluzione delle Entita' (Name Matching)
+## Entity Resolution & Fuzzy Name Matching
 
-Le varie piattaforme utilizzano convenzioni differenti per i nomi dei calciatori (es. abbreviazioni, suffissi, caratteri accentati o apostrofi). fanta-lab implementa una pipeline di normalizzazione a quattro livelli:
+Different platforms utilize contrasting naming conventions (e.g., diacritics, abbreviations, first-name initials, or nicknames). `fanta-lab` employs a 4-tier normalization pipeline:
 
-1. **Normalizzazione Unicode (NFD)**: Rimozione di diacritici e accenti (es. Kessie -> kessie, Lauriente -> lauriente).
-2. **Regex Stripping**: Rimozione automatica delle iniziali di nome (es. Martinez L. -> martinez, Paz N. -> paz).
-3. **Fuzzy Matching con Levenshtein (difflib.get_close_matches)**: Confronto di similarita' con cutoff 0.75 - 0.85.
-4. **Mappatura Manuale di Override (MANUAL_FUZZY_MAP)**: Dizionario esplicito per risolvere omonimie (es. fratelli Oyono A. / Oyono J., El Azzouzi A. / El Azzouzi O.).
+1. **Unicode Decomposition (NFD)**: Strips all diacritics and accented characters (e.g., `Kessié` -> `kessie`, `Laurienté` -> `lauriente`).
+2. **Regex Initialization Stripping**: Eliminates trailing initials (e.g., `Martinez L.` -> `martinez`, `Paz N.` -> `paz`).
+3. **Levenshtein Fuzzy Matching (`difflib.get_close_matches`)**: Similarity scoring with an acceptance threshold of 0.75 - 0.85.
+4. **Manual Homonym Resolution Table (`MANUAL_FUZZY_MAP`)**: Explicit lookup dictionary to disambiguate siblings, identical surnames, or non-trivial transliterations (e.g., `Oyono A.` vs `Oyono J.`, `El Azzouzi A.` vs `El Azzouzi O.`).
 
 ---
 
-## Best Practices di Scraping e Resilienza
+## Scraping Resilience & Rate Limiting
 
-- **User-Agent Desktop Header**: Emulazione di browser desktop per evitare blocchi IP.
-- **Rate Limiting Controllato**: Pause di 1.5s tra le chiamate HTTP sequenziali.
-- **Cache Locale Persistente**: File `tm_injuries_cache.json` salvato progressivamente ogni 30 record per evitare di ri-scaricare profili gia' acquisiti.
-- **Fallback Automatico**: Se football-data e' irraggiungibile, gli indici offensivi e difensivi delle squadre vengono ricavati aggregando i gol segnati e subiti direttamente dai dati di `fantacalcio.it`.
+- **Desktop User-Agent Headers**: Emulates modern desktop browser headers to prevent endpoint blocking.
+- **Controlled Rate Limiting**: Inter-request delays (1.5s) on sequential endpoints.
+- **Incremental Cache Persistence**: `tm_injuries_cache.json` is flushed to disk periodically (every 30 records) to allow resumption without redundant HTTP requests.
+- **Automated Fallback Architecture**: If external match-data endpoints are unavailable, team offensive and defensive indices are derived dynamically by aggregating player-level goal data.

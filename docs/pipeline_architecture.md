@@ -1,30 +1,30 @@
-# Architettura della Pipeline — fanta-lab
+# Pipeline Architecture — fanta-lab
 
-fanta-lab e' un framework modulare per l'estrazione, l'aggregazione e l'analisi quantitativa dei calciatori di Serie A in ottica asta Fantacalcio (Classic e Mantra).
+`fanta-lab` is a modular, multi-source framework for extracting, aggregating, and modeling football player performance data to optimize pre-season fantasy auction strategies.
 
 ---
 
-## Flusso dei Dati
+## Data Flow Architecture
 
 ```mermaid
 flowchart TD
-    subgraph Sources [Fonti Dati Esterne]
-        FC["fantacalcio.it<br/>Storico 11 stagioni + Quotazioni"]
-        US["Understat.com<br/>xG / xA / Shots / Key Passes"]
-        TM["Transfermarkt.com<br/>Storico Infortuni 3 anni"]
-        FD["football-data.co.uk<br/>Risultati Serie A"]
+    subgraph Sources [External Data Sources]
+        FC["Official League & Fantasy Source<br/>Multi-Season Historical Stats + Official Prices"]
+        US["Understat API<br/>xG / xA / Shots / Key Passes"]
+        TM["Transfermarkt.com<br/>3-Year Injury History & Durations"]
+        FD["Match & League Databases<br/>Team Offensive/Defensive Strength"]
     end
 
-    subgraph Pipeline [Pipeline di Elaborazione]
-        S1["01_scrape_historical.py<br/>Raccolta storico 11 stagioni"]
-        S3["03_update_listone.py<br/>Parsing Quotazioni ufficiali"]
-        S4["04_scrape_understat.py<br/>Scraping metriche avanzate xG"]
-        S5["05_scrape_injuries.py<br/>Scraping infortuni multithread"]
-        S6["06_build_dataset.py<br/>Fuzzy Join + Score Composito"]
-        S7["07_generate_excel.py<br/>Export Excel Multi-Scheda"]
+    subgraph Pipeline [Processing Pipeline]
+        S1["01_scrape_historical.py<br/>Multi-season historical ratings extraction"]
+        S3["03_update_listone.py<br/>Official price sheet parsing & active status"]
+        S4["04_scrape_understat.py<br/>Advanced expected metrics extraction"]
+        S5["05_scrape_injuries.py<br/>Multithreaded clinical history scraper"]
+        S6["06_build_dataset.py<br/>Fuzzy entity matching & Composite Score Engine"]
+        S7["07_generate_excel.py<br/>Multi-tab formatted spreadsheet export"]
     end
 
-    subgraph Outputs [Artefatti Finali]
+    subgraph Outputs [Generated Artifacts]
         CSV[("dataset_finale.csv")]
         XLSX[("analisi_fantacalcio_completa.xlsx")]
         INJ[("storico_infortuni.csv")]
@@ -49,54 +49,54 @@ flowchart TD
 
 ---
 
-## Fasi della Pipeline
+## Pipeline Execution Stages
 
-### Fase 1: Raccolta Dati Storici (pipeline/01_scrape_historical.py)
-- **Obiettivo**: Raccogliere le statistiche di tutti i calciatori per le ultime 11 stagioni di Serie A da `fantacalcio.it`.
-- **Output**:
-  - `data/storico_giocatori_raw.csv`: ~5.000 righe (giocatore per stagione).
-  - `data/storico_giocatori_aggregato.csv`: Medie voto ponderate (3y con pesi 3-2-1), trend di rendimento, volatilita' (std), disponibilita' percentuale e tassi bonus/malus per presenza.
-  - `data/storico_squadre_aggregato.csv`: Indici offensivi e difensivi delle squadre.
+### Stage 1: Historical Data Ingestion (pipeline/01_scrape_historical.py)
+- **Objective**: Collect detailed player statistics across multiple historical seasons.
+- **Outputs**:
+  - `data/storico_giocatori_raw.csv`: Raw match/season records (~5,000 player-season rows).
+  - `data/storico_giocatori_aggregato.csv`: Decaying weighted ratings (3y with 3-2-1 weighting), performance volatility (standard deviation), multi-year trend slopes, availability rates, and per-appearance bonus/penalty metrics.
+  - `data/storico_squadre_aggregato.csv`: Team-level offensive and defensive rating coefficients.
 
-### Fase 2: Aggiornamento Listone (pipeline/03_update_listone.py)
-- **Obiettivo**: Leggere il file ufficiale delle quotazioni (`Quotazioni_Fantacalcio_Stagione_XXXX_XX.xlsx`), separare i calciatori attivi dai ceduti e preparare la struttura base del listone.
-- **Output**: DataFrame in memoria con 530+ giocatori attivi, ruoli Classic/Mantra, quotazioni attuali e FVM.
+### Stage 2: Price Sheet Ingestion (pipeline/03_update_listone.py)
+- **Objective**: Parse the official pre-season fantasy quotations workbook, separate active players from transferred/departed assets, and establish baseline roster profiles.
+- **Outputs**: In-memory active player structure with role mapping (Classic & Mantra positional roles), base pricing, and market valuations.
 
-### Fase 2b: Scraping Understat (pipeline/04_scrape_understat.py)
-- **Obiettivo**: Interrogare l'API di Understat per estrarre Expected Goals (xG), Expected Assists (xA), non-penalty xG (npxG) e tiri per 90 minuti per le ultime 4 stagioni.
-- **Output**:
+### Stage 2b: Advanced Offensive Metrics (pipeline/04_scrape_understat.py)
+- **Objective**: Query the Understat API to extract Expected Goals (xG), Expected Assists (xA), non-penalty xG (npxG), and shot-creation volume per 90 minutes.
+- **Outputs**:
   - `data/understat_raw.csv`
-  - `data/understat_aggregato.csv` (medie ponderate 3y e metriche p90).
+  - `data/understat_aggregato.csv` (3y weighted averages and per-90 metrics).
 
-### Fase 3: Scraping Infortuni Transfermarkt (pipeline/05_scrape_injuries.py)
-- **Obiettivo**: Scraping asincrono multithread su Transfermarkt per ogni calciatore del listone, con verifica incrociata su nome e squadra di appartenenza.
-- **Output**:
-  - `data/tm_injuries_cache.json` (cache locale per evitare ri-scraping).
-  - Conteggio giorni di stop, numero infortuni, flag infortunio grave (>60 giorni) e calcolo malus fragilita'.
+### Stage 3: Injury & Fragility Audit (pipeline/05_scrape_injuries.py)
+- **Objective**: Execute multithreaded asynchronous scraping on Transfermarkt for every active player, cross-referencing player name and club affiliation.
+- **Outputs**:
+  - `data/tm_injuries_cache.json` (persistent local cache).
+  - Metrics: total days injured, total absence events, severe injury indicator (>= 60 days), and medical fragility index.
 
-### Fase 4: Build Dataset Finale (pipeline/06_build_dataset.py)
-- **Obiettivo**: Eseguire il merge multi-sorgente tramite algoritmi di fuzzy matching normalizzato (gestione accenti, varianti di nome, abbreviazioni) e calcolare lo **Score Composito** pesato e il malus infortuni.
-- **Output**:
-  - `data/dataset_finale.csv` (dataset unificato a 37 colonne).
-  - `data/storico_infortuni.csv` (report dettagliato fragilita' fisica).
+### Stage 4: Entity Resolution & Dataset Synthesis (pipeline/06_build_dataset.py)
+- **Objective**: Perform multi-source fuzzy matching across disparate naming conventions (handling diacritics, nicknames, initializations, and manual homonym overrides) and compute the risk-adjusted Composite Score.
+- **Outputs**:
+  - `data/dataset_finale.csv` (unified 37-column analytics matrix).
+  - `data/storico_infortuni.csv` (detailed physical fragility audit).
 
-### Fase 5: Generazione Excel Multi-Scheda (pipeline/07_generate_excel.py)
-- **Obiettivo**: Creare un foglio di calcolo Excel con formattazione condizionale, larghezza colonne adattiva, palette di colori per ruolo e scheda "LEGENDA COLONNE" per l'asta.
-- **Output**:
-  - `data/analisi_fantacalcio_completa.xlsx` (Schede: Listone Completo, Portieri, Difensori, Centrocampisti, Attaccanti, Legenda).
+### Stage 5: Formatted Multi-Sheet Workbook Generation (pipeline/07_generate_excel.py)
+- **Objective**: Generate a formatted Excel spreadsheet featuring positional tabs, conditional color coding, and an auction strategy guide.
+- **Outputs**:
+  - `data/analisi_fantacalcio_completa.xlsx` (Sheets: Full List, Goalkeepers, Defenders, Midfielders, Forwards, Legend).
 
 ---
 
-## Esecuzione tramite CLI
+## CLI Execution
 
 ```bash
-# Esegui tutta la pipeline
+# Execute entire pipeline end-to-end
 python run_pipeline.py
 
-# Esegui uno step specifico
+# Execute specific individual stages
 python run_pipeline.py --step 6
 python run_pipeline.py --step 7
 
-# Esegui a partire da un determinato step
+# Execute from a specific starting step onward
 python run_pipeline.py --from 4
 ```
