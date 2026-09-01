@@ -168,23 +168,37 @@ graph TD
 
 ---
 
-## Matrice Decisionale per l'Asta
+## Matrice Decisionale per l'Asta (Valore vs Prezzo)
 
-All'interno del foglio Excel generato, i calciatori possono essere segmentati in quattro quadranti operativi incrociando lo **Score Finale** con la **Quotazione d'Asta**:
+Incrociando lo **Score Finale** (rendimento atteso corretto per il rischio clinico) con il **Prezzo / Quotazione d'Asta** (aspettativa economica del mercato), ogni calciatore del listone viene segmentato in quattro quadranti operativi:
+
+| Livello di Score | Basso Prezzo / Low Cost | Alto Prezzo / Top di Mercato |
+|---|---|---|
+| **Alto Score Finale**<br/>*(Rendimento e integrità elevati)* | **QUADRANTE 2 — OCCASIONI D'ORO (Target Primari)**<br/>Calciatori con metriche eccellenti, titolarità e ottimi xG sottovalutati dal listone. Qui si creano i vantaggi competitivi decisivi dell'asta. | **QUADRANTE 1 — TOP PLAYER LEGITTIMI (Pilastri)**<br/>Fuoriclasse con score dominante e comprovata affidabilità. L'investimento di una quota cospicua del budget è giustificato dai numeri. |
+| **Basso Score Finale**<br/>*(Rendimento mediocre o alta fragilità)* | **QUADRANTE 3 — RIEMPILISTA (1 Credito)**<br/>Titolari di squadre minori o riserve sicure da acquisire al prezzo base (1 credito) per chiudere gli slot secondari senza disperdere risorse. | **QUADRANTE 4 — TRAPPOLE D'ASTA (Hype da Evitare)**<br/>Nomi altisonanti reduci da stagioni deludenti o con cronicità di infortuni. Giocatori da rilanciare per far spendere e impoverire gli avversari. |
 
 ```mermaid
-quadrantChart
-    title Matrice Valore / Prezzo all'Asta
-    x-axis "Prezzo / Quotazione (Crediti) Basso" --> "Prezzo / Quotazione (Crediti) Alto"
-    y-axis "Score Finale Basso" --> "Score Finale Alto"
-    quadrant-1 "Top Player Legittimi (Puntare il budget)"
-    quadrant-2 "Occasioni / Target Sottovalutati (Massima priorità)"
-    quadrant-3 "Scarti / Riempilista a 1 credito"
-    quadrant-4 "Trappole da Evitare (Hype ingiustificato)"
-```
+flowchart LR
+    subgraph Q2_Box ["QUADRANTE 2: Occasioni Sottovalutate"]
+        Q2_T["Alto Score + Basso Prezzo"]
+        Q2_A["Azione: Priorità assoluta di acquisto"]
+    end
 
-- **Quadrante 2 (Alto Score, Basso Prezzo)**: Le vere gemme dell'asta. Giocatori con numeri solidi, titolarità e xG elevati, ignorati dal grande pubblico.
-- **Quadrante 4 (Basso Score, Alto Prezzo)**: I pericoli pubblici. Calciatori famosi, reduci da infortuni o con rendimento storico scadente, prezzati solo per il nome sulla maglia.
+    subgraph Q1_Box ["QUADRANTE 1: Top Player Legittimi"]
+        Q1_T["Alto Score + Alto Prezzo"]
+        Q1_A["Azione: Allocazione budget primario"]
+    end
+
+    subgraph Q3_Box ["QUADRANTE 3: Riempilista"]
+        Q3_T["Basso Score + Basso Prezzo"]
+        Q3_A["Azione: Chiamata a 1 credito"]
+    end
+
+    subgraph Q4_Box ["QUADRANTE 4: Trappole d'Asta"]
+        Q4_T["Basso Score + Alto Prezzo"]
+        Q4_A["Azione: Lasciare agli avversari"]
+    end
+```
 
 ---
 
