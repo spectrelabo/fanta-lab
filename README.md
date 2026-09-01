@@ -1,154 +1,288 @@
-# ⚽ fanta-lab — Quantitative Fantacalcio & Serie A Analytics
+# fanta-lab — Quantitative Fantacalcio & Serie A Analytics Framework
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Data Sources](https://img.shields.io/badge/sources-Fantacalcio%20%7C%20Understat%20%7C%20Transfermarkt-orange.svg)](#-fonti-dati)
-[![Code Style](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Data Sources](https://img.shields.io/badge/sources-Fantacalcio%20%7C%20Understat%20%7C%20Transfermarkt-orange.svg)](#credits--ingestion-sources)
 
-> **Pipeline data-driven modulare per l'analisi quantitativa, il ranking statistico e la strategia d'asta per il Fantacalcio (Classic e Mantra).**
+Pipeline data-driven modulare per l'estrazione, l'ingegnerizzazione delle feature e la costruzione di un ranking quantitativo per l'asta del Fantacalcio (Classic e Mantra).
 
+---
+
+## Il Problema: Perché l'Intuizione all'Asta Fallisce Sistematicamente
+
+Ogni estate, milioni di fantallenatori si siedono al tavolo dell'asta convinti che la loro "sensazione viscerale" li porterà alla vittoria. I risultati sono prevedibili:
+- Il 40% del budget speso per l'attaccante che ha segnato tre gol nel precampionato contro una rappresentativa dilettanti di montagna.
+- Il difensore comprato a peso d'oro per poi scoprire che passa sei mesi all'anno in clinica per problemi muscolari ricorrenti.
+- L'acquisto compulsivo del centrocampista "di inserimento" che ha un Expected Goals per novanta minuti inferiore a quello del secondo portiere dell'Empoli.
+
+`fanta-lab` nasce per sostituire le allucinazioni da bar sport con una pipeline quantitativa fredda, riproducibile e basata su dati oggettivi. Il nostro obiettivo non è dirti chi "ti piace", ma quantificare con precisione chirurgica il **valore atteso corretto per il rischio** di ogni singolo calciatore presente nel listone di Serie A.
+
+---
+
+## Il Nostro Obiettivo e l'Utilizzo dello Score Composito
+
+Lo **Score Composito** non è una sfera di cristallo per indovinare chi segnerà domenica prossima. È un **compasso decisionale per l'asta**:
+1. **Identificazione delle Asimmetrie di Mercato**: Trovare i calciatori che il listone ufficiale o la percezione popolare sottovalutano drammaticamente rispetto ai loro volumi di gioco storici e sottostanti (xG, xA, costanza di voto).
+2. **Scudo Anti-Hype (Risk-Adjusted Pricing)**: Ridurre sistematicamente la valutazione dei calciatori clinicamente fragili o iper-volatili, indipendentemente dal blasone della squadra di appartenenza.
+3. **Ottimizzazione del Budget**: Calcolare il tetto massimo di rilancio razionale per non trovarsi all'una di notte a completare il centrocampo con 4 crediti residui.
+
+---
+
+## Architettura della Pipeline di Elaborazione Dati
+
+L'infrastruttura raccoglie, normalizza e fonde quattro dataset indipendenti attraverso una catena di script sequenziali.
+
+```mermaid
+flowchart TD
+    subgraph Ingestion [1. Acquisizione Dati Eterogenei]
+        FC_Hist["fantacalcio.it (Storico 11 Anni)<br/>Voti, Medie, Bonus/Malus, Presenze"]
+        FC_Quot["fantacalcio.it (Listone Attuale)<br/>Quotazioni, FVM, Ruoli Classic/Mantra"]
+        US["Understat API (Ultime 4 Stagioni)<br/>xG, xA, npxG, Shots, Key Passes"]
+        TM["Transfermarkt (Ultime 3 Stagioni)<br/>Giorni di stop, N. infortuni, Gravità"]
+        FD["football-data.co.uk<br/>Statistiche e Risultati Serie A"]
+    end
+
+    subgraph Processing [2. Feature Engineering & Fuzzy Matching]
+        P1["01_scrape_historical.py<br/>Calcolo medie ponderate 3y, trend, volatilità"]
+        P2["03_update_listone.py<br/>Separazione attivi/ceduti e mapping ruoli"]
+        P3["04_scrape_understat.py<br/>Aggregazione metriche offensive p90"]
+        P4["05_scrape_injuries.py<br/>Scraping multithread e calcolo indice fragilità"]
+    end
+
+    subgraph Fusion [3. Risoluzione Entità & Scoring]
+        P5["06_build_dataset.py<br/>Fuzzy Join normalizzato a 4 livelli<br/>Calcolo Score Base + Penalizzazione Medica"]
+    end
+
+    subgraph Output [4. Generazione Artefatti Operativi]
+        CSV[("dataset_finale.csv<br/>37 feature per 530+ calciatori")]
+        XLSX[("analisi_fantacalcio_completa.xlsx<br/>Multi-scheda formattata con Legenda")]
+        INJ[("storico_infortuni.csv<br/>Audit clinico per calciatore")]
+    end
+
+    FC_Hist --> P1
+    FD --> P1
+    FC_Quot --> P2
+    US --> P3
+    TM --> P4
+
+    P1 --> P5
+    P2 --> P5
+    P3 --> P5
+    P4 --> P5
+
+    P5 --> CSV
+    P5 --> INJ
+    CSV --> XLSX
 ```
-#fantacalcio #fantasy-football #serie-a #machine-learning #ai #neural-networks #python #tensorflow #tensorflow-probability
-```
 
 ---
 
-## 🎯 Panoramica del Progetto
+## Metodologia Quantitativa dello Score
 
-`fanta-lab` nasce per colmare il divario tra l'intuito soggettivo e l'analisi quantitativa avanzata all'asta del Fantacalcio. Integrando oltre **11 stagioni di dati storici** da `fantacalcio.it`, metriche avanzate di tiro e creazione occasioni (**xG/xA**) da `Understat`, e l'affidabilità medica/infortuni da `Transfermarkt`, il framework calcola uno **Score Composito** oggettivo e genera fogli di calcolo Excel multi-scheda pronti per guidare le decisioni all'asta in tempo reale.
-
-Ispirato a progetti innovativi come [fantabeto](https://github.com/uPeppe/fantabeto), `fanta-lab` unisce la **valutazione pre-asta globale, la profilazione del rischio fisico e l'individuazione di target sottovalutati**, con l'obiettivo futuro di integrare anche simulazioni match-by-match bayesiane.
-
----
-
-## ⚖️ Confronto con Progetti Esistenti
-
-| Dimensione | [fantabeto](https://github.com/uPeppe/fantabeto) | **fanta-lab** (questo progetto) |
-|---|---|---|
-| **Obiettivo Primario** | Previsione probabilità voto/fantavoto per singola giornata | **Valutazione strategica pre-asta, ranking oggettivo e risk management** |
-| **Modello** | Rete Neurale Bayesiana (TensorFlow Probability, SinhArcsinh) | **Score Composito Multi-Criterio + Modello Penalità Infortuni** |
-| **Fonti Dati** | fantacalcio.it, FBref | **fantacalcio.it, Understat (xG/xA), Transfermarkt (Infortuni), football-data.co.uk** |
-| **Analisi Infortuni** | Non modellata esplicitamente | **Scraping multithread 3y con malus fragilità fino a -15%** |
-| **Formato Output** | Notebook Jupyter con simulazione formazione | **CLI unificata + Excel multi-scheda formattato con schede per ruolo e legenda** |
-| **Supporto Mantra** | Limitato | **Nativo (colonne `role_mantra` e integrazione con quotazioni)** |
-| **Integrazione / Fork** | Base di partenza per modelli bayesiani | *In valutazione una fork / estensione per unire i due workflow* |
-
----
-
-## 🏗️ Architettura della Pipeline
+Lo Score Finale è un indice sintetico normalizzato nell'intervallo $[0.00, 1.00]$, generato in due stadi: la costruzione dello Score Base e l'abbattimento proporzionale per fragilità clinica.
 
 ```mermaid
 flowchart LR
-    A[01 Storico 11y<br/>fantacalcio.it] --> E[06 Build Dataset<br/>Merge + Score]
-    B[03 Listone Attivo<br/>Quotazioni Ufficiali] --> E
-    C[04 xG / xA 4y<br/>Understat API] --> E
-    D[05 Infortuni 3y<br/>Transfermarkt] --> E
-    E --> F[(dataset_finale.csv)]
-    F --> G[07 Generatore Excel]
-    G --> H[analisi_fantacalcio_completa.xlsx]
+    subgraph Inputs [Feature Normalizzate Min-Max]
+        MV3["MV Storica 3y (20%)"]
+        MVA["MV Attesa (20%)"]
+        FMA["FM Attesa (15%)"]
+        PB8["Prob. Bonus ≥8 (20%)"]
+        XG["xG Medio 3y (10%)"]
+        AV["Disponibilità % (10%)"]
+        PR["Convenienza Prezzo (5%)"]
+    end
+
+    subgraph Aggregation [Score Base]
+        SB["Score Base = Somma Pesata (0.00 - 1.00)"]
+    end
+
+    subgraph Risk [Fattore di Correzione Medica]
+        INJ_D["Giorni Stop 3y / 180 (70%)"]
+        INJ_G["Infortunio Grave ≥60gg (30%)"]
+        MALUS["Malus Infortuni (0.00 - 1.00)"]
+    end
+
+    subgraph Final [Score Finale Asta]
+        SF["Score Finale = Score Base × (1.0 - 0.15 × Malus)"]
+    end
+
+    MV3 --> SB
+    MVA --> SB
+    FMA --> SB
+    PB8 --> SB
+    XG --> SB
+    AV --> SB
+    PR --> SB
+
+    INJ_D --> MALUS
+    INJ_G --> MALUS
+
+    SB --> SF
+    MALUS --> SF
 ```
 
-Dettagli approfonditi disponibili in [docs/pipeline_architecture.md](docs/pipeline_architecture.md).
+### 1. Composizione Pesi dello Score Base
 
----
+$$\text{Score}_{\text{base}} = \sum_{i} w_i \cdot \text{Norm}(F_i)$$
 
-## 📐 Score Composito e Metodologia
+| Metrica ($F_i$) | Peso ($w_i$) | Significato Analitico |
+|---|---|---|
+| **MV Ponderata (3y)** | `0.20` | Media voto degli ultimi 3 anni con pesi decrescenti ($3\times$ anno $t-1$, $2\times$ anno $t-2$, $1\times$ anno $t-3$). Elimina l'illusione della singola stagione miracolosa. |
+| **MV Attesa Stagionale** | `0.20` | Media voto pura proiettata dal modello per il campionato attuale. |
+| **Fantamedia Attesa** | `0.15` | Fantavoto atteso complessivo (voto base + bonus da gol/assist e malus da cartellini). |
+| **Probabilità Bonus $\ge 8$** | `0.20` | Frequenza stimata di prestazioni da "bonus pesante" ($\ge 8.0$). Misura l'impatto decisivo nella singola giornata. |
+| **xG Medio (3y)** | `0.10` | Volume di Expected Goals medi per stagione (Understat). La fortuna nei tiri svanisce, la capacità di trovarsi al tiro rimane. |
+| **Disponibilità %** | `0.10` | Rapporto tra partite a voto e 38 giornate teoriche. Il giocatore più forte del mondo è inutile se siede in tribuna 18 domeniche. |
+| **Convenienza Prezzo** | `0.05` | $1.0 - \text{Norm}(\text{Prezzo})$. Piccolo bonus di efficienza per i profili low-cost con alti fondamentali. |
 
-Lo **Score Finale** è normalizzato nell'intervallo $[0.00, 1.00]$ e combina:
+### 2. Modello di Abbattimento per Rischio Infortuni
 
-$$\text{Score} = \left( 0.20 \cdot \text{MV}_{3y} + 0.20 \cdot \text{MV}_{\text{attesa}} + 0.15 \cdot \text{FM}_{\text{attesa}} + 0.20 \cdot \text{Prob}_{\ge 8} + 0.10 \cdot \text{xG}_{3y} + 0.10 \cdot \text{Avail} + 0.05 \cdot (1 - \text{Prezzo}) \right) \times (1 - 0.15 \cdot \text{Malus}_{\text{infortuni}})$$
+Un calciatore che trascorre 200 giorni all'anno sul lettino dei massaggiatori non può avere lo stesso valore d'asta di un atleta integro con pari numeri. Il malus applica una decurtazione fino a un massimo del **15%** sullo score finale:
 
-- **MV 3y Ponderata**: Media voto ultime 3 stagioni con pesi $3\times, 2\times, 1\times$.
-- **Malus Infortuni**: Funzione dei giorni di stop totali e della presenza di infortuni gravi ($>60$ giorni).
+$$\text{Penalità}_{\text{giorni}} = \min\left(\frac{\text{Giorni Stop 3y}}{180}, 1.0\right)$$
 
-Dettagli completi e formule matematiche in [docs/scoring_methodology.md](docs/scoring_methodology.md).
+$$\text{Penalità}_{\text{grave}} = \begin{cases} 0.30 & \text{se } \text{Max Giorni Singolo Stop} \ge 60 \\ 0.00 & \text{altrimenti} \end{cases}$$
 
----
+$$\text{Malus}_{\text{infortuni}} = \min\left(0.70 \cdot \text{Penalità}_{\text{giorni}} + \text{Penalità}_{\text{grave}}, 1.0\right)$$
 
-## 🚀 Quick Start
+$$\text{Score}_{\text{finale}} = \text{Score}_{\text{base}} \times \left(1.0 - 0.15 \cdot \text{Malus}_{\text{infortuni}}\right)$$
 
-### 1. Clonazione e Setup Ambiente
-```bash
-git clone https://github.com/SpectreLabo/fanta-lab.git
-cd fanta-lab
-
-# Crea e attiva virtual environment (consigliato)
-python3 -m venv venv
-source venv/bin/activate
-
-# Installa dipendenze
-pip install -r requirements.txt
+```mermaid
+graph TD
+    A["Giorni di Stop negli ultimi 3 anni"] --> B{"Giorni >= 180?"}
+    B -- "Sì" --> C["Penalità Giorni = 1.0"]
+    B -- "No" --> D["Penalità Giorni = Giorni / 180"]
+    
+    E["Storico Cartella Clinica"] --> F{"Singolo stop >= 60 giorni?"}
+    F -- "Sì" --> G["Penalità Grave = +0.30"]
+    F -- "No" --> H["Penalità Grave = 0.00"]
+    
+    C --> I["Malus = min(0.70 × Giorni + Grave, 1.0)"]
+    D --> I
+    G --> I
+    H --> I
+    
+    I --> J["Taglio Score Finale: da 0% a -15%"]
 ```
 
-### 2. Esecuzione Pipeline
+---
 
-```bash
-# Esegui l'intera pipeline end-to-end
-python run_pipeline.py
+## Matrice Decisionale per l'Asta
 
-# Oppure esegui singoli passaggi
-python run_pipeline.py --step 3   # Aggiorna listone da Quotazioni
-python run_pipeline.py --step 6   # Calcola Score e genera dataset finale
-python run_pipeline.py --step 7   # Genera l'Excel multi-scheda
+All'interno del foglio Excel generato, i calciatori possono essere segmentati in quattro quadranti operativi incrociando lo **Score Finale** con la **Quotazione d'Asta**:
+
+```mermaid
+quadrantChart
+    title Matrice Valore / Prezzo all'Asta
+    x-axis "Prezzo / Quotazione (Crediti) Basso" --> "Prezzo / Quotazione (Crediti) Alto"
+    y-axis "Score Finale Basso" --> "Score Finale Alto"
+    quadrant-1 "Top Player Legittimi (Puntare il budget)"
+    quadrant-2 "Occasioni / Target Sottovalutati (Massima priorità)"
+    quadrant-3 "Scarti / Riempilista a 1 credito"
+    quadrant-4 "Trappole da Evitare (Hype ingiustificato)"
 ```
 
----
-
-## 📊 Output Generati
-
-1. **`data/analisi_fantacalcio_completa.xlsx`**:
-   - Scheda `LISTONE COMPLETO` ordinata per Score Finale.
-   - Schede dedicate per ruolo: `PORTIERI`, `DIFENSORI`, `CENTROCAMPISTI`, `ATTACCANTI`.
-   - Scheda `LEGENDA COLONNE` con guida operativa all'asta.
-2. **`data/dataset_finale.csv`**: Dataset strutturato a 37 colonne per analisi programmatiche.
-3. **`data/storico_infortuni.csv`**: Report di fragilità fisica e giorni di stop per ogni calciatore.
-4. **`examples/dataset_sample.csv`**: Campione di 55 giocatori rappresentativi per test rapidi.
+- **Quadrante 2 (Alto Score, Basso Prezzo)**: Le vere gemme dell'asta. Giocatori con numeri solidi, titolarità e xG elevati, ignorati dal grande pubblico.
+- **Quadrante 4 (Basso Score, Alto Prezzo)**: I pericoli pubblici. Calciatori famosi, reduci da infortuni o con rendimento storico scadente, prezzati solo per il nome sulla maglia.
 
 ---
 
-## 📂 Struttura del Repository
+## Confronto con fantabeto
+
+| Dimensione | fantabeto (uPeppe) | fanta-lab (questo framework) |
+|---|---|---|
+| **Ambito Operativo** | Previsione probabilistica match-by-match durante la stagione | Valutazione strategica d'asta, ranking oggettivo e risk management |
+| **Architettura** | Rete Neurale Bayesiana (TensorFlow Probability, SinhArcsinh) | Score Composito Multi-Criterio con penalità clinica parametrica |
+| **Infortuni** | Non considerati nel calcolo | Scraping Transfermarkt multithread con audit su 3 stagioni |
+| **Mantra** | Supporto limitato | Supporto nativo (integrazione ruoli Mantra e quotazioni FVM) |
+| **Output** | Simulazione formazione via script/notebook | File Excel multi-scheda formattato e pronto all'uso con legenda |
+| **Evoluzione Futura** | Progetto di riferimento | Valutazione di un fork per integrare simulazione bayesiana e score d'asta |
+
+---
+
+## Struttura del Repository
 
 ```
 fanta-lab/
-├── config.py                          # Configurazione globale, pesi e mapping
-├── run_pipeline.py                    # Entry point CLI unificato
-├── requirements.txt                   # Dipendenze minime
-├── LICENSE                            # Licenza MIT
+├── config.py                          # Configurazione globale, pesi, mapping e path
+├── run_pipeline.py                    # Entry point CLI unificato con argparse
+├── requirements.txt                   # Dipendenze Python minime
+├── LICENSE                            # Licenza open-source MIT
 ├── pipeline/
 │   ├── 01_scrape_historical.py        # Fase 1: Storico 11 anni fantacalcio.it
-│   ├── 03_update_listone.py           # Fase 2: Lettura Quotazioni ufficiali
+│   ├── 03_update_listone.py           # Fase 2: Parsing Quotazioni ufficiali
 │   ├── 04_scrape_understat.py         # Fase 2b: Scraping xG/xA da Understat
 │   ├── 05_scrape_injuries.py          # Fase 3: Scraping infortuni Transfermarkt
-│   ├── 06_build_dataset.py            # Fase 4: Fuzzy Join e calcolo Score
+│   ├── 06_build_dataset.py            # Fase 4: Fuzzy Join e calcolo Score Finale
 │   └── 07_generate_excel.py           # Fase 5: Esportazione Excel multi-scheda
 ├── docs/
-│   ├── pipeline_architecture.md       # Dettaglio tecnico del flusso dati
-│   ├── scoring_methodology.md         # Formule matematiche e pesi
-│   └── data_sources.md                # Descrizione fonti e logiche di scraping
+│   ├── pipeline_architecture.md       # Dettaglio tecnico dei flussi dati
+│   ├── scoring_methodology.md         # Formule matematiche e dimostrazioni
+│   └── data_sources.md                # Specifiche API e fallback
 ├── examples/
-│   └── dataset_sample.csv             # Dataset dimostrativo pronto all'uso
-└── data/                              # Directory dati (generati dalla pipeline)
+│   └── dataset_sample.csv             # Campione di 55 calciatori pronto all'uso
+└── data/                              # Directory artefatti generati
 ```
 
 ---
 
-## 🙏 Credits & Ingestion Sources
+## Guida Rapida all'Uso
 
-Questo progetto è reso possibile grazie a strumenti, piattaforme e repository open-source della community:
+### 1. Setup dell'Ambiente
+```bash
+git clone https://github.com/spectrelabo/fanta-lab.git
+cd fanta-lab
 
-- **[fantabeto](https://github.com/uPeppe/fantabeto)** di [@uPeppe](https://github.com/uPeppe) — Progetto pionieristico sull'applicazione di reti neurali bayesiane al Fantacalcio. Fonte di grande ispirazione metodologica. È in valutazione la creazione di una fork / integrazione diretta per combinare lo score d'asta pre-stagionale con i modelli di lineup simulation bayesiana per singola giornata.
-- **[Fantacalcio.it](http://fantacalcio.it/)** — *The game!* Dati ufficiali, voti, pagelle storiche, liste calciatori, FVM e probabili formazioni.
-- **[FBref.com](http://fbref.com/)** — Miniera di statistiche avanzate per calciatori e squadre internazionali.
-- **[ff_prob](https://github.com/amiles2233/ff_prob)** — Ispirazione fondamentale per l'impiego di TensorFlow Probability e Bayesian Neural Networks nelle stime prestazionali del fantasy football.
-- **[Scrape-FBref-data](https://github.com/parth1902/Scrape-FBref-data)** — Riferimento per lo scraping automatizzato da FBref.
-- **[Understat.com](https://understat.com/)** — Modelli statistici avanzati di Expected Goals ($xG$), Expected Assists ($xA$) e shot-level metrics per la Serie A.
-- **[Transfermarkt.com](https://www.transfermarkt.com/)** — Database storico dettagliato su infortuni, tempi di recupero e affidabilità fisica.
+python3 -m venv venv
+source venv/bin/activate
+
+pip install -r requirements.txt
+```
+
+### 2. Esecuzione della Pipeline
+
+```bash
+# Esegui la pipeline completa end-to-end
+python run_pipeline.py
+
+# Esegui solo specifici passaggi
+python run_pipeline.py --step 3   # Aggiornamento listone
+python run_pipeline.py --step 6   # Calcolo Score e generazione dataset finale
+python run_pipeline.py --step 7   # Generazione foglio Excel multi-scheda
+
+# Esegui a partire da un determinato step
+python run_pipeline.py --from 4   # Da Understat fino all'Excel finale
+```
 
 ---
 
-## 🤝 Contribuzione & Licenza
+## Output Prodotti
 
-Pull request e suggerimenti per nuovi modelli o feature sono benvenuti!
-Distribuito con licenza **MIT** — vedi il file [LICENSE](LICENSE) per tutti i dettagli.
+1. **`data/analisi_fantacalcio_completa.xlsx`**: Foglio di calcolo con schede separate per ruolo (`PORTIERI`, `DIFENSORI`, `CENTROCAMPISTI`, `ATTACCANTI`), formattazione condizionale, colori per ruolo e scheda `LEGENDA COLONNE`.
+2. **`data/dataset_finale.csv`**: Dataset master con 37 colonne per analisi avanzate con pandas, polars o R.
+3. **`data/storico_infortuni.csv`**: Report della cartella clinica triennale per ogni giocatore analizzato.
+4. **`examples/dataset_sample.csv`**: Estratto di test con 55 profili per validazione rapida senza scraping.
 
-*Progetto sviluppato da [SpectreLabo](https://github.com/SpectreLabo).*
+---
+
+## Credits & Ingestion Sources
+
+Il progetto riconosce e ringrazia le fonti e gli strumenti open-source che hanno reso possibile questo lavoro:
+
+- **[fantabeto](https://github.com/uPeppe/fantabeto)** di [@uPeppe](https://github.com/uPeppe): Lavoro di riferimento per l'approccio scientifico al Fantacalcio. È in valutazione la realizzazione di un fork per unificare il nostro ranking d'asta con il suo motore di simulazione bayesiana.
+- **[Fantacalcio.it](http://fantacalcio.it/)**: Fonte primaria per voti storici, statistiche, FVM e quotazioni.
+- **[FBref.com](http://fbref.com/)**: Database di riferimento per le statistiche avanzate a livello europeo.
+- **[ff_prob](https://github.com/amiles2233/ff_prob)**: Ispirazione per l'impiego di modelli probabilistici applicati al fantasy football.
+- **[Scrape-FBref-data](https://github.com/parth1902/Scrape-FBref-data)**: Utilità di riferimento per l'ingestion dati da FBref.
+- **[Understat.com](https://understat.com/)**: Fornitore delle metriche di tiro, Expected Goals ($xG$) ed Expected Assists ($xA$).
+- **[Transfermarkt.com](https://www.transfermarkt.com/)**: Archivio medico e storico infortuni.
+
+---
+
+## Contribuzione e Licenza
+
+Contributi, segnalazioni di anomalie e proposte di estensione dei modelli sono benvenuti tramite Pull Request e Issue.
+Rilasciato sotto licenza **MIT**. Vedere il file [LICENSE](LICENSE) per i termini completi.
+
+Progetto mantenuto da [SpectreLabo](https://github.com/spectrelabo).
