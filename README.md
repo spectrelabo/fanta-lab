@@ -8,7 +8,6 @@
 
 A modular, data-driven pipeline for data extraction, probabilistic machine learning projections, sabermetric valuation (VORP), mathematical roster optimization, and modern live draft command center for fantasy football auctions (Fantacalcio Serie A).
 
-🌐 **Production Web Application**: [https://fanta-lab.vercel.app](https://fanta-lab.vercel.app)  
 📖 **Model Interpretability Guide**: [docs/MODEL_INTERPRETABILITY.md](docs/MODEL_INTERPRETABILITY.md)
 
 ---
@@ -19,14 +18,15 @@ A modular, data-driven pipeline for data extraction, probabilistic machine learn
 
 - **Independent Manager Profiles**: Select your profile or switch between managers with full `localStorage` isolation (personal wishlist, max credit caps, custom notes).
 - **Tactical Blueprints & Stop-Loss Limits**: 5 strategic archetypes (*Trazione Anteriore, Modificatore di Ferro, Centrocampo Dominante, Moneyball, Custom Blueprint*) with per-slot target prices, Stop-Loss ceilings, and free cluster navigation.
-- **Admin-Gated Live Draft (Battitore)**: Password-protected admin mode (`fanta2026` by default) to call, bid, and assign players with real-time budget synchronization across all participants.
+- **Admin-Gated Live Draft (Battitore)**: Password-protected admin mode (`fanta2026` by default or configurable via `ADMIN_PASSWORD` environment variable) to call, bid, and assign players with real-time budget synchronization across all participants.
 - **FantaLab AI Tactical Engine**: Natural language query engine to compare players, audit injury risks, analyze VORP spreads, and explore budget-constrained opportunities.
 
-To run the web application locally:
+### Running Locally or Self-Hosting
 ```bash
 python3 app.py
-# Open http://localhost:5001
+# Server starts at http://localhost:5001
 ```
+For private cloud deployment (e.g., Vercel, Railway, Render), standard serverless configuration is provided in [`vercel.json`](vercel.json).
 
 ---
 
