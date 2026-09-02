@@ -10,13 +10,9 @@ data/*.xlsx
 # Excel output files
 *.xlsx
 
-# Local Web App & Auction State (Beta - local only)
-app.py
-vercel.json
+# Runtime Auction State & Local Cache (Keep local)
 auction_state.json
-templates/
-static/
-web/
+.vercel
 
 # Python
 __pycache__/
@@ -49,3 +45,4 @@ Thumbs.db
 
 # Logs
 *.log
+.vercel

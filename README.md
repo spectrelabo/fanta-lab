@@ -6,7 +6,27 @@
 [![Optimization: MILP](https://img.shields.io/badge/optimizer-SciPy%20MILP%20Knapsack-purple.svg)](https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.milp.html)
 [![ML: Quantile Regression](https://img.shields.io/badge/ML-Scikit--Learn%20Quantile%20GBR-yellow.svg)](https://scikit-learn.org/)
 
-A modular, data-driven pipeline for data extraction, probabilistic machine learning projections, sabermetric valuation (VORP), and mathematical roster optimization designed for fantasy football auctions and league drafts across any domestic competition.
+A modular, data-driven pipeline for data extraction, probabilistic machine learning projections, sabermetric valuation (VORP), mathematical roster optimization, and modern live draft command center for fantasy football auctions (Fantacalcio Serie A).
+
+🌐 **Production Web Application**: [https://fanta-lab.vercel.app](https://fanta-lab.vercel.app)  
+📖 **Model Interpretability Guide**: [docs/MODEL_INTERPRETABILITY.md](docs/MODEL_INTERPRETABILITY.md)
+
+---
+
+## Live Auction Command Center (`app.py`)
+
+`fanta-lab` includes a full-featured, mobile-first web application designed for real-time draft day decision making:
+
+- **Independent Manager Profiles**: Select your profile or switch between managers with full `localStorage` isolation (personal wishlist, max credit caps, custom notes).
+- **Tactical Blueprints & Stop-Loss Limits**: 5 strategic archetypes (*Trazione Anteriore, Modificatore di Ferro, Centrocampo Dominante, Moneyball, Custom Blueprint*) with per-slot target prices, Stop-Loss ceilings, and free cluster navigation.
+- **Admin-Gated Live Draft (Battitore)**: Password-protected admin mode (`fanta2026` by default) to call, bid, and assign players with real-time budget synchronization across all participants.
+- **FantaLab AI Tactical Engine**: Natural language query engine to compare players, audit injury risks, analyze VORP spreads, and explore budget-constrained opportunities.
+
+To run the web application locally:
+```bash
+python3 app.py
+# Open http://localhost:5001
+```
 
 ---
 

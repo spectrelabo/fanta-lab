@@ -22,6 +22,7 @@ QUOTAZIONI_PATH     = os.path.join(DATA_DIR, QUOTAZIONI_FILENAME)
 DATASET_FINALE_CSV   = os.path.join(DATA_DIR, "dataset_finale.csv")
 INJURIES_CACHE_JSON  = os.path.join(DATA_DIR, "tm_injuries_cache.json")
 INJURIES_CSV         = os.path.join(DATA_DIR, "storico_infortuni.csv")
+FORMAZIONI_CSV       = os.path.join(DATA_DIR, "formazioni_2627.csv")
 OUTPUT_EXCEL         = os.path.join(DATA_DIR, "analisi_fantacalcio_completa.xlsx")
 
 # Storico

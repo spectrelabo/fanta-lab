@@ -72,17 +72,65 @@ def merge_storico(df, df_agg):
 
 
 def merge_understat(df, df_us_agg):
-    """Merge con Understat xG/xA tramite match fuzzy normalizzato."""
+    """Merge con Understat xG/xA tramite match cognome + fuzzy normalizzato."""
     us_names = df_us_agg["player_name_us"].tolist()
     us_norm  = [normalize(n) for n in us_names]
-    us_map   = {}
+
+    # Build surname index: surname_norm → [(full_name, full_norm), ...]
+    # Understat uses full names like "Donyell Malen", our dataset uses "Malen"
+    surname_index = {}
+    for i, full_name in enumerate(us_names):
+        parts = full_name.strip().split()
+        if parts:
+            surname = normalize(parts[-1])
+            surname_index.setdefault(surname, []).append((full_name, us_norm[i]))
+
+    # Also build team-based index from Understat for disambiguation
+    us_teams = {}
+    if "team_us_last" in df_us_agg.columns:
+        for _, row in df_us_agg.iterrows():
+            us_teams[row["player_name_us"]] = normalize(str(row.get("team_us_last", "")))
+
+    us_map = {}
 
     for fc_name in df["player"].unique():
         fc_norm = normalize(fc_name)
+        # Remove trailing initials like "T." from "Chalobah T."
         fc_base = re.sub(r'\s+[a-z]{1,2}\.$', '', fc_norm).strip()
-        candidates = difflib.get_close_matches(fc_base, us_norm, n=1, cutoff=0.75)
+
+        # Strategy 1: Direct surname match
+        fc_surname = fc_base.split()[-1] if fc_base.split() else fc_base
+        if fc_surname in surname_index:
+            candidates = surname_index[fc_surname]
+            if len(candidates) == 1:
+                # Unique surname match
+                us_map[fc_name] = candidates[0][0]
+                continue
+            else:
+                # Multiple candidates — try to narrow down by first name or team
+                best = None
+                for full_name, full_norm in candidates:
+                    if fc_base in full_norm or full_norm.endswith(fc_base):
+                        best = full_name
+                        break
+                if best:
+                    us_map[fc_name] = best
+                    continue
+                # Take the first match as fallback (most recent)
+                us_map[fc_name] = candidates[0][0]
+                continue
+
+        # Strategy 2: Full fuzzy match (lower cutoff)
+        candidates = difflib.get_close_matches(fc_base, us_norm, n=1, cutoff=0.65)
         if candidates:
             idx = us_norm.index(candidates[0])
+            us_map[fc_name] = us_names[idx]
+            continue
+
+        # Strategy 3: Try matching just surname against full names
+        surname_fuzzy = difflib.get_close_matches(fc_surname, us_norm, n=1, cutoff=0.75)
+        if surname_fuzzy:
+            idx = us_norm.index(surname_fuzzy[0])
             us_map[fc_name] = us_names[idx]
 
     df["us_name"] = df["player"].map(us_map)
@@ -134,6 +182,63 @@ def apply_injuries(df):
     df["n_infortuni_3y"]       = n_inj_list
     df["infortunio_grave"]     = grave_list
     df["malus_infortuni"]      = malus_list
+    return df
+
+
+def merge_lineups(df):
+    """Merge con i dati delle formazioni reali 2026/27 (da Sofascore)."""
+    lineup_path = config.FORMAZIONI_CSV
+    if not os.path.exists(lineup_path):
+        print("  ⚠️  Formazioni 2626/27 non trovate, skip titolari confermati.")
+        df["starts_2627"] = 0
+        df["sub_apps_2627"] = 0
+        df["minutes_2627"] = 0
+        df["is_starter_2627"] = False
+        df["starter_pct_2627"] = 0.0
+        return df
+
+    df_lineups = pd.read_csv(lineup_path)
+    print(f"  Formazioni caricate: {len(df_lineups)} giocatori")
+
+    # Match via player_dataset column (already fuzzy-matched in stage 4b)
+    if "player_dataset" not in df_lineups.columns:
+        print("  ⚠️  Colonna player_dataset mancante, skip.")
+        df["starts_2627"] = 0
+        df["sub_apps_2627"] = 0
+        df["minutes_2627"] = 0
+        df["is_starter_2627"] = False
+        df["starter_pct_2627"] = 0.0
+        return df
+
+    lineup_cols = ["player_dataset", "starts_2627", "sub_apps_2627",
+                   "minutes_2627", "is_starter_2627", "starter_pct_2627"]
+    df_lu = df_lineups[df_lineups["player_dataset"].notna()][lineup_cols].copy()
+    df_lu = df_lu.rename(columns={"player_dataset": "player"})
+
+    # Deduplicate: when multiple Sofascore players match the same dataset name
+    # (e.g. "Di Lorenzo" matched to both Giovanni Di Lorenzo and Lorenzo Lucca),
+    # keep the row with the most starts (the correct match)
+    df_lu = df_lu.sort_values("starts_2627", ascending=False).drop_duplicates(
+        subset=["player"], keep="first"
+    )
+
+    # Drop existing columns if re-running
+    for c in ["starts_2627", "sub_apps_2627", "minutes_2627", "is_starter_2627", "starter_pct_2627"]:
+        if c in df.columns:
+            df.drop(columns=[c], inplace=True)
+
+    df = df.merge(df_lu, on="player", how="left")
+
+    # Fill missing with defaults
+    df["starts_2627"] = df["starts_2627"].fillna(0).astype(int)
+    df["sub_apps_2627"] = df["sub_apps_2627"].fillna(0).astype(int)
+    df["minutes_2627"] = df["minutes_2627"].fillna(0).astype(int)
+    df["is_starter_2627"] = df["is_starter_2627"].fillna(False).astype(bool)
+    df["starter_pct_2627"] = df["starter_pct_2627"].fillna(0.0)
+
+    starters = df["is_starter_2627"].sum()
+    print(f"  Titolari confermati nel dataset: {starters} / {len(df)}")
+
     return df
 
 
@@ -200,6 +305,9 @@ def main():
 
     # 5. Applica infortuni
     df = apply_injuries(df)
+
+    # 5b. Merge formazioni reali 2026/27 (titolari confermati)
+    df = merge_lineups(df)
 
     # 6. Calcola score
     df = compute_score(df)

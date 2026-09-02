@@ -1,16 +1,9 @@
 #!/usr/bin/env python3
 """
-STAGE 8 — Quantile Regression: Floor, Expected, and Ceiling Fantasy Points.
+STAGE 8 — Quantile Regression Points Modeling (P10 Floor, P50 Expected, P90 Ceiling).
 
-Trains multi-quantile gradient boosting models (P10 Floor, P50 Median, P90 Ceiling)
-on multi-season historical player performance to predict total season fantasy points
-with probabilistic uncertainty intervals.
-
-Outputs added to data/dataset_finale.csv:
-  - predicted_pts_p10: Conservative floor projection (10th percentile)
-  - predicted_pts_p50: Expected median season points (50th percentile)
-  - predicted_pts_p90: High-ceiling upside projection (90th percentile)
-  - pts_volatility_spread: Upside vs downside spread (p90 - p10)
+Trains Gradient Boosting Regressors on historical Serie A player-season performances
+and projects probabilistic season fantasy points for all active players.
 """
 
 import os, sys, warnings
@@ -24,14 +17,14 @@ import config
 warnings.filterwarnings("ignore")
 
 
-def build_historical_training_dataset():
+def prepare_training_data():
     """
-    Builds the historical training dataset from raw multi-season player statistics.
+    Loads historical seasons data and prepares feature matrix X and target y.
     Target: Total Season Fantasy Points = pg * mfv
     """
     raw_path = config.STORICO_RAW_CSV
     if not os.path.exists(raw_path):
-        print(f"Warning: {raw_path} not found. Generating synthetic baseline.")
+        print(f"Warning: {raw_path} not found.")
         return None, None
 
     df_raw = pd.read_csv(raw_path)
@@ -74,9 +67,9 @@ def train_quantile_models(X, y):
         gbr = GradientBoostingRegressor(
             loss="quantile",
             alpha=alpha,
-            n_estimators=120,
+            n_estimators=150,
             max_depth=4,
-            learning_rate=0.08,
+            learning_rate=0.06,
             random_state=42
         )
         gbr.fit(X, y)
@@ -92,20 +85,63 @@ def predict_active_dataset(models, df_active):
     """
     df = df_active.copy()
 
-    # Feature mapping for active dataset
-    mv_input = pd.to_numeric(df.get("mv_media_3y"), errors="coerce").fillna(
-        pd.to_numeric(df.get("NN_MV_Atteso"), errors="coerce").fillna(6.0)
-    )
-    mfv_input = pd.to_numeric(df.get("NN_FV_Atteso"), errors="coerce").fillna(mv_input)
+    # Handle new transfers from abroad & low historical Serie A sample sizes
+    fvm_arr = pd.to_numeric(df.get("FVM_1000"), errors="coerce").fillna(10.0)
+    prezzo_arr = pd.to_numeric(df.get("Prezzo_Consigliato_Cr"), errors="coerce").fillna(1.0)
+    
+    # 1. Base Mean Vote (MV)
+    mv_input = pd.to_numeric(df.get("mv_media_3y"), errors="coerce")
+    mv_fallback = pd.to_numeric(df.get("NN_MV_Atteso"), errors="coerce").fillna(6.05)
+    mv_input = np.where(mv_input.isna() | (mv_input < 5.6) & (fvm_arr >= 40), mv_fallback, mv_input)
+    mv_input = pd.Series(mv_input).fillna(6.05).clip(5.5, 7.0)
 
+    # 2. Availability (use real lineup data + high FVM/price fallback)
+    avail_rate = pd.to_numeric(df.get("availability"), errors="coerce").fillna(0.75)
+    is_starter = df.get("is_starter_2627", pd.Series(False, index=df.index))
+    is_starter = is_starter.fillna(False).astype(bool)
+    starter_pct = pd.to_numeric(df.get("starter_pct_2627"), errors="coerce").fillna(0.0)
+
+    # Confirmed starters from real lineups: availability >= 0.82 (31+ matches/38)
+    # Scale based on starter percentage: 100% starter → 0.88, 50% starter → 0.82
+    starter_avail_floor = np.where(
+        is_starter,
+        np.clip(0.82 + starter_pct * 0.08, 0.82, 0.90),
+        0.0
+    )
+    avail_rate = np.maximum(avail_rate, starter_avail_floor)
+
+    # Fallback for high-value players without lineup data
+    avail_rate = np.where(
+        (fvm_arr >= 40) | (prezzo_arr >= 12),
+        np.maximum(avail_rate, 0.80),
+        avail_rate
+    )
+    avail_rate = pd.Series(avail_rate).clip(0.15, 1.0)
+
+    # 3. Gol & Assist rates
     gol_rate = pd.to_numeric(df.get("gol_per_pg"), errors="coerce").fillna(0.0)
     ass_rate = pd.to_numeric(df.get("ass_per_pg"), errors="coerce").fillna(0.0)
-    amm_rate = pd.to_numeric(df.get("amm_per_pg"), errors="coerce").fillna(0.15)
-    avail_rate = pd.to_numeric(df.get("availability"), errors="coerce").fillna(0.75)
+    amm_rate = pd.to_numeric(df.get("amm_per_pg"), errors="coerce").fillna(0.12)
+
+    # Impute expected goal rate for foreign/new top strikers and midfielders
+    for i in range(len(df)):
+        r = df.iloc[i]["role"]
+        f_val = fvm_arr.iloc[i]
+        if r == "A" and gol_rate.iloc[i] < 0.10 and f_val >= 90:
+            gol_rate.iloc[i] = round(0.15 + (f_val / 1000.0) * 1.05, 3)
+            if ass_rate.iloc[i] < 0.05:
+                ass_rate.iloc[i] = round(0.06 + (f_val / 1000.0) * 0.25, 3)
+        elif r == "C" and gol_rate.iloc[i] < 0.05 and f_val >= 90:
+            gol_rate.iloc[i] = round(0.08 + (f_val / 1000.0) * 0.50, 3)
+            if ass_rate.iloc[i] < 0.05:
+                ass_rate.iloc[i] = round(0.08 + (f_val / 1000.0) * 0.40, 3)
+
+    # Compute genuine expected Fantamedia (MFV)
+    mfv_input = (mv_input + (gol_rate * 3.0) + (ass_rate * 1.0) - (amm_rate * 0.5)).clip(5.0, 9.5)
 
     # Adjust availability with medical injury malus
     injury_malus = pd.to_numeric(df.get("malus_infortuni"), errors="coerce").fillna(0.0)
-    effective_avail = (avail_rate * (1.0 - 0.20 * injury_malus)).clip(0.1, 1.0)
+    effective_avail = (avail_rate * (1.0 - 0.15 * injury_malus)).clip(0.15, 1.0)
 
     X_active = pd.DataFrame({
         "mv": mv_input,
@@ -138,37 +174,27 @@ def main():
     print("=" * 60)
 
     if not os.path.exists(config.DATASET_FINALE_CSV):
-        raise FileNotFoundError(f"Missing {config.DATASET_FINALE_CSV}. Run stage 06 first.")
+        raise FileNotFoundError(f"Missing {config.DATASET_FINALE_CSV}.")
+
+    X, y = prepare_training_data()
+    if X is None or len(X) == 0:
+        print("  Error: No training data available.")
+        return
+
+    models = train_quantile_models(X, y)
 
     df_active = pd.read_csv(config.DATASET_FINALE_CSV)
+    df_predicted = predict_active_dataset(models, df_active)
 
-    X_train, y_train = build_historical_training_dataset()
-    if X_train is not None and len(X_train) > 100:
-        models = train_quantile_models(X_train, y_train)
-        df_updated = predict_active_dataset(models, df_active)
-    else:
-        print("  Using analytical quantile estimation fallback...")
-        df_updated = df_active.copy()
-        pts_base = df_updated["NN_FV_Atteso"].fillna(6.0) * (df_updated["availability"].fillna(0.75) * 38)
-        df_updated["predicted_pts_p10"] = (pts_base * 0.75).round(1)
-        df_updated["predicted_pts_p50"] = pts_base.round(1)
-        df_updated["predicted_pts_p90"] = (pts_base * 1.30).round(1)
-        df_updated["pts_volatility_spread"] = (df_updated["predicted_pts_p90"] - df_updated["predicted_pts_p10"]).round(1)
-
-    df_updated.to_csv(config.DATASET_FINALE_CSV, index=False, encoding="utf-8-sig")
+    df_predicted.to_csv(config.DATASET_FINALE_CSV, index=False, encoding="utf-8-sig")
     print(f"\n  Updated dataset with quantile projections: {config.DATASET_FINALE_CSV}")
 
-    # Display Top 3 per role with Floor/Ceiling intervals
-    print("\n  PROBABILISTIC FANTAPOINTS PROJECTIONS (P10 Floor | P50 Expected | P90 Ceiling):")
-    for role, name in [("P", "Goalkeepers"), ("D", "Defenders"), ("C", "Midfielders"), ("A", "Forwards")]:
-        sub = df_updated[df_updated["role"] == role].sort_values("predicted_pts_p50", ascending=False).head(4)
-        print(f"\n  {name}:")
-        for _, r in sub.iterrows():
-            print(f"    {r['player']:<20} Sq:{str(r['team']):<4} "
-                  f"Floor(P10): {r['predicted_pts_p10']:>5.1f} pts | "
-                  f"Expected(P50): {r['predicted_pts_p50']:>5.1f} pts | "
-                  f"Ceiling(P90): {r['predicted_pts_p90']:>5.1f} pts | "
-                  f"Spread: {r['pts_volatility_spread']:>4.1f}")
+    print("\n  TOP ATTACKERS QUANTILE PROJECTIONS (P10 / P50 / P90):")
+    top_a = df_predicted[df_predicted["role"] == "A"].sort_values("predicted_pts_p50", ascending=False).head(8)
+    for _, r in top_a.iterrows():
+        print(f"    {r['player']:<20} Sq:{str(r['team']):<4} "
+              f"Floor(P10):{r['predicted_pts_p10']:>5.1f} | Expected(P50):{r['predicted_pts_p50']:>5.1f} | "
+              f"Ceiling(P90):{r['predicted_pts_p90']:>5.1f} | Spread: {r['pts_volatility_spread']:>4.1f} pts")
 
     print("\n  STAGE 8 COMPLETED.\n")
 
