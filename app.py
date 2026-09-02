@@ -24,6 +24,19 @@ if not os.path.exists(DATA_PATH):
 # Support writable temp path for Vercel / serverless environments
 STATE_PATH = "/tmp/auction_state.json" if os.environ.get("VERCEL") else os.path.join(BASE_DIR, "auction_state.json")
 
+# Load local .env if present
+ENV_PATH = os.path.join(BASE_DIR, ".env")
+if os.path.exists(ENV_PATH):
+    try:
+        with open(ENV_PATH, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+    except Exception:
+        pass
+
 # Admin Passkey (default: fanta2026)
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "fanta2026")
 
@@ -666,8 +679,8 @@ def api_ai_query():
                 }
             }
 
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}"
-            resp = requests.post(url, json=payload, timeout=6)
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key={gemini_key}"
+            resp = requests.post(url, json=payload, timeout=10)
             if resp.status_code == 200:
                 res_json = resp.json()
                 reply = res_json.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip()
@@ -676,7 +689,7 @@ def api_ai_query():
                         "type": "llm_chat",
                         "title": "Risposta Tattica FantaLab AI",
                         "text": reply,
-                        "engine": "gemini-1.5-flash"
+                        "engine": "gemini-3.5-flash-lite"
                     })
         except Exception:
             pass  # Transparently fallback to local quantitative engine

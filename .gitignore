@@ -43,6 +43,10 @@ Thumbs.db
 # Jupyter
 .ipynb_checkpoints/
 
+# Environment & Keys
+.env
+*.env
+
 # Logs
 *.log
 .vercel
