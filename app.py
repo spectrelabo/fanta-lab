@@ -9,7 +9,7 @@ import sys
 import json
 import re
 import pandas as pd
-import numpy as np
+import requests
 from flask import Flask, jsonify, request, render_template_string, send_from_directory
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -608,8 +608,9 @@ def api_undo():
 @app.route("/api/ai_query", methods=["POST"])
 def api_ai_query():
     """
-    FantaLab AI Tactical Engine
-    Processes user query and provides structured, data-driven fantasy advice.
+    FantaLab AI Hybrid Tactical Engine
+    Seamlessly integrates Google Gemini 1.5 Flash (Free Tier) when server key is present,
+    with an immediate, zero-latency Local Quantitative Reasoner fallback.
     """
     data = request.json or {}
     prompt = str(data.get("prompt", "")).strip()
@@ -622,50 +623,166 @@ def api_ai_query():
     state = load_state()
     assigned = state.get("assigned_players", {})
     team = next((t for t in state["teams"] if t["id"] == profile_id), state["teams"][0])
+    spent = team.get("spent_by_role", {"P": 0, "D": 0, "C": 0, "A": 0})
+    counts = team.get("counts", {"P": 0, "D": 0, "C": 0, "A": 0})
 
     prompt_lower = prompt.lower()
 
-    # 1. Check for Comparison Query (e.g. "Malen vs Lautaro", "Confronta Malen e Lautaro")
-    is_comp = any(w in prompt_lower for w in ["vs", "contro", "confront", "meglio tra", "differenza tra"])
-    if is_comp:
-        parts = re.split(r'\s+(?:vs|contro|e|o|oppure)\s+|\s+confronta\s+|\s+tra\s+', prompt_lower)
-        parts = [p.replace('confronta', '').replace('chi è meglio', '').replace('meglio', '').strip() for p in parts if p.strip()]
-        if len(parts) >= 2:
-            p1_q, p2_q = parts[0], parts[1]
-            m1 = df[df['player'].str.lower().str.contains(p1_q, na=False)]
-            m2 = df[df['player'].str.lower().str.contains(p2_q, na=False)]
+    # ─────────────────────────────────────────────────────────────
+    # 1. OPTIONAL GEMINI 1.5 FLASH FREE-TIER INTEGRATION
+    # ─────────────────────────────────────────────────────────────
+    gemini_key = os.environ.get("GEMINI_API_KEY")
+    if gemini_key:
+        try:
+            # Build condensed context: user squad state + top available players
+            unassigned_df = df[~df['player'].isin(assigned.keys())]
+            top_sample = unassigned_df.head(40)[['player', 'role', 'team', 'predicted_pts_p50', 'prezzo_fair_1000', 'vorp_points', 'is_starter_2627']].to_dict(orient='records')
+            
+            system_instruction = (
+                "Sei FantaLab AI, il consulente quantitativo senior per aste di Fantacalcio Serie A (Classic/Mantra).\n"
+                "CONTESTO SQUADRA UTENTE:\n"
+                f"- Manager: {team['name']}\n"
+                f"- Crediti Residui: {team['remaining']} / 1000 cr (Max rilancio singolo: {team['max_bid']} cr)\n"
+                f"- Slot occupati: P: {counts.get('P',0)}/4, D: {counts.get('D',0)}/9, C: {counts.get('C',0)}/9, A: {counts.get('A',0)}/7\n"
+                f"- Spesi per ruolo: P: {spent.get('P',0)} cr, D: {spent.get('D',0)} cr, C: {spent.get('C',0)} cr, A: {spent.get('A',0)} cr\n\n"
+                "REGOLE DECISIONALI:\n"
+                "1. Basa ogni consiglio su VORP, Punti Attesi (P50), Prezzo Fair stimato e Titolarità confermata 2026/27.\n"
+                "2. Sii conciso, analitico e professionale. Usa elenchi puntati e grassetto per cifre e nomi.\n"
+                "3. Rispondi in italiano in formato Markdown pulito."
+            )
 
-            if not m1.empty and not m2.empty:
-                r1, r2 = m1.iloc[0], m2.iloc[0]
-                winner = r1 if r1.get('vorp_points', 0) >= r2.get('vorp_points', 0) else r2
-                return jsonify({
-                    "type": "comparison",
-                    "title": f"Confronto: {r1['player']} vs {r2['player']}",
-                    "p1": {
-                        "name": r1['player'], "team": r1['team'], "role": r1['role'],
-                        "pts_exp": float(r1.get('predicted_pts_p50', 0)),
-                        "fair_1000": int(r1.get('prezzo_fair_1000', 1)),
-                        "vorp": float(r1.get('vorp_points', 0)),
-                        "starts": int(r1.get('starts_2627', 0)),
-                        "injury_days": int(r1.get('giorni_infortunio_3y', 0))
-                    },
-                    "p2": {
-                        "name": r2['player'], "team": r2['team'], "role": r2['role'],
-                        "pts_exp": float(r2.get('predicted_pts_p50', 0)),
-                        "fair_1000": int(r2.get('prezzo_fair_1000', 1)),
-                        "vorp": float(r2.get('vorp_points', 0)),
-                        "starts": int(r2.get('starts_2627', 0)),
-                        "injury_days": int(r2.get('giorni_infortunio_3y', 0))
-                    },
-                    "verdict": f"Analisi Tattica: {winner['player']} offre un VORP superiore (+{winner.get('vorp_points', 0):.1f} pts) e migliore efficienza prezzo/rendimento rispetto a {r2['player'] if winner['player'] == r1['player'] else r1['player']}."
+            payload = {
+                "contents": [
+                    {
+                        "role": "user",
+                        "parts": [
+                            {"text": f"System Context:\n{system_instruction}\n\nTop Giocatori Liberi di Riferimento:\n{json.dumps(top_sample, ensure_ascii=False)}\n\nDomanda del manager: {prompt}"}
+                        ]
+                    }
+                ],
+                "generationConfig": {
+                    "temperature": 0.35,
+                    "maxOutputTokens": 650
+                }
+            }
+
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}"
+            resp = requests.post(url, json=payload, timeout=6)
+            if resp.status_code == 200:
+                res_json = resp.json()
+                reply = res_json.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip()
+                if reply:
+                    return jsonify({
+                        "type": "llm_chat",
+                        "title": "Risposta Tattica FantaLab AI",
+                        "text": reply,
+                        "engine": "gemini-1.5-flash"
+                    })
+        except Exception:
+            pass  # Transparently fallback to local quantitative engine
+
+    # ─────────────────────────────────────────────────────────────
+    # 2. LOCAL QUANTITATIVE REASONING ENGINE (Zero Latency & 0 Cost)
+    # ─────────────────────────────────────────────────────────────
+
+    # A. Check for Squad Health / Roster Diagnostic
+    squad_keywords = ["squadra", "rosa", "come sono", "cosa mi manca", "situazione", "budget", "bilancio", "diagnosi"]
+    if any(k in prompt_lower for k in squad_keywords) and not any(p_name in prompt_lower for p_name in df['player'].str.lower().head(100)):
+        p_slots = 4 - counts.get('P', 0)
+        d_slots = 9 - counts.get('D', 0)
+        c_slots = 9 - counts.get('C', 0)
+        a_slots = 7 - counts.get('A', 0)
+        tot_free = p_slots + d_slots + c_slots + a_slots
+        avg_cr_per_slot = round(team['remaining'] / max(1, tot_free), 1)
+
+        advice_points = []
+        if a_slots > 0 and team['remaining'] > 300:
+            advice_points.append(f"Riserva circa il 40-48% del budget residuo ({int(team['remaining']*0.45)} cr) per completare il reparto d'attacco con almeno 1 Top e 1 Semi-Top.")
+        if d_slots > 3:
+            advice_points.append(f"Mancano {d_slots} difensori. Se punti al Modificatore, investi su 2 centrali da 6.20+ MV a 15-25 cr e completa con titolari a 1-3 cr.")
+        if c_slots > 3:
+            advice_points.append(f"A centrocampo hai {c_slots} slot liberi: cerca profili con VORP positivo e xG alto (rigoristi/incursori).")
+        if avg_cr_per_slot < 6:
+            advice_points.append("ATTENZIONE: Media crediti per slot molto bassa. Procedi con disciplina chiamando solo svincolati a 1 credito.")
+
+        return jsonify({
+            "type": "roster_diagnostic",
+            "title": f"Diagnosi Tattica: {team['name']}",
+            "stats": {
+                "remaining": team['remaining'],
+                "max_bid": team['max_bid'],
+                "free_slots": {"P": p_slots, "D": d_slots, "C": c_slots, "A": a_slots, "total": tot_free},
+                "spent_by_role": spent,
+                "avg_per_slot": avg_cr_per_slot
+            },
+            "advice": advice_points,
+            "verdict": f"Stato Finanziario: Ti restano {team['remaining']} cr per {tot_free} slot (media {avg_cr_per_slot} cr/slot). Max rilancio disponibile: {team['max_bid']} cr."
+        })
+
+    aliases = {
+        'lautaro': 'martinez l.',
+        'lautaro martinez': 'martinez l.',
+        'kvara': 'kvaratskhelia',
+        'calha': 'calhanoglu',
+        'chalanoglu': 'calhanoglu',
+        'dimash': 'dimarco',
+        'douglas': 'douglas luiz',
+    }
+    expanded_prompt = prompt_lower
+    for k_alias, v_target in aliases.items():
+        if k_alias in expanded_prompt:
+            expanded_prompt += f" {v_target}"
+
+    def player_matches_query(p_name_str, query_str):
+        p_clean = p_name_str.lower()
+        if p_clean in query_str:
+            return True
+        tokens = [t for t in re.split(r'[\s\.\-]+', p_clean) if len(t) >= 4]
+        for tok in tokens:
+            if re.search(rf'\b{re.escape(tok)}\b', query_str):
+                return True
+        return False
+
+    # B. Multi-Player Comparison (2 or more players)
+    is_comp = any(w in prompt_lower for w in ["vs", "contro", "confront", "meglio tra", "differenza tra", "chi tra", "chi prendere tra"])
+    if is_comp:
+        matched_players = []
+        for _, row in df.iterrows():
+            if player_matches_query(row['player'], expanded_prompt):
+                if row['player'] not in [m['player'] for m in matched_players]:
+                    matched_players.append(row)
+            if len(matched_players) >= 3:
+                break
+
+        if len(matched_players) >= 2:
+            matched_players = matched_players[:2] if len(re.split(r'\s+(?:vs|contro|e|o)\s+', prompt_lower)) <= 2 else matched_players[:3]
+            matched_players.sort(key=lambda r: float(r.get('vorp_points', 0)), reverse=True)
+            winner = matched_players[0]
+            
+            p_list = []
+            for r in matched_players:
+                p_list.append({
+                    "name": r['player'], "team": r['team'], "role": r['role'],
+                    "pts_exp": float(r.get('predicted_pts_p50', 0)),
+                    "fair_1000": int(r.get('prezzo_fair_1000', 1)),
+                    "vorp": float(r.get('vorp_points', 0)),
+                    "starts": int(r.get('starts_2627', 0)),
+                    "injury_days": int(r.get('giorni_infortunio_3y', 0))
                 })
 
-    # 2. Check for Specific Player Analysis
+            return jsonify({
+                "type": "comparison",
+                "title": f"Confronto: {' vs '.join([p['name'] for p in p_list])}",
+                "players": p_list,
+                "winner": winner['player'],
+                "verdict": f"Scelta Consigliata: **{winner['player']}** è il profilo con efficienza superiore (+{winner.get('vorp_points', 0):.1f} VORP, {winner.get('predicted_pts_p50', 0):.1f} pts attesi, Prezzo Fair: {int(winner.get('prezzo_fair_1000', 1))} cr)."
+            })
+
+    # C. Specific Player Analysis
     for _, row in df.iterrows():
-        p_name = row['player'].lower()
-        if p_name in prompt_lower or (len(p_name) > 3 and p_name.split()[-1] in prompt_lower and len(p_name.split()[-1]) > 3):
+        if player_matches_query(row['player'], prompt_lower):
             is_ass = row['player'] in assigned
-            starter_txt = "Titolare confermato 2026/27" if row.get('is_starter_2627') else "Non ancora titolare fisso"
+            starter_txt = "Titolare confermato 2026/27" if row.get('is_starter_2627') else "Rotazione / Non ancora titolare fisso"
             return jsonify({
                 "type": "player_deepdive",
                 "title": f"Scheda Analitica: {row['player']} ({row['team']})",
@@ -685,10 +802,10 @@ def api_ai_query():
                     "injury_days": int(row.get('giorni_infortunio_3y', 0)),
                     "is_assigned": is_ass
                 },
-                "verdict": f"Valutazione Modello: Prezzo fair stimato {row.get('prezzo_fair_1000', 1)} cr. {starter_txt} con proiezione {row.get('predicted_pts_p50', 0):.1f} punti attesi."
+                "verdict": f"Valutazione Modello: Prezzo fair stimato a 1000cr: **{row.get('prezzo_fair_1000', 1)} cr**. {starter_txt} con proiezione P50 di **{row.get('predicted_pts_p50', 0):.1f} punti attesi** e VORP **+{row.get('vorp_points', 0):.1f}**."
             })
 
-    # 3. Recommendations by Role, Budget, or Modificatore
+    # D. Recommendations by Role, Budget, or Modificatore
     role_map = {'portier': 'P', 'difensor': 'D', 'centrocampist': 'C', 'attaccant': 'A'}
     target_role = None
     for k, v in role_map.items():
@@ -700,7 +817,6 @@ def api_ai_query():
     max_budget = int(budget_match.group(1)) if budget_match else None
 
     filtered = df.copy()
-    # Filter only available players
     filtered = filtered[~filtered['player'].isin(assigned.keys())]
 
     if target_role:
@@ -735,7 +851,7 @@ def api_ai_query():
         "type": "recommendations",
         "title": f"Migliori Opportunità Disponibili: {role_desc}{budget_desc}",
         "players": records,
-        "verdict": "Consiglio Strategico: I profili sopra evidenziati offrono il miglior rapporto tra titolarità confermata e surplus di valore."
+        "verdict": "Consiglio Tattico: I profili selezionati offrono il miglior compromesso tra titolarità confermata e surplus di valore VORP."
     })
 
 
@@ -1358,6 +1474,70 @@ HTML_TEMPLATE = """
             background: var(--primary);
             color: #090d16;
         }
+
+        /* Conversational Chat UI */
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            min-height: 280px;
+            max-height: 540px;
+            overflow-y: auto;
+            padding: 8px 2px;
+            margin-bottom: 12px;
+            scroll-behavior: smooth;
+        }
+        .chat-msg {
+            display: flex;
+            gap: 10px;
+            max-width: 92%;
+            animation: fadeInMsg 0.2s ease-in-out;
+        }
+        @keyframes fadeInMsg {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .chat-msg.user {
+            align-self: flex-end;
+            flex-direction: row-reverse;
+        }
+        .chat-msg.ai {
+            align-self: flex-start;
+            width: 100%;
+        }
+        .chat-msg-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 1.5px solid var(--primary);
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+        .chat-bubble {
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-size: 0.95rem;
+            line-height: 1.5;
+            word-break: break-word;
+        }
+        .chat-msg.user .chat-bubble {
+            background: #0284c7;
+            color: #ffffff;
+            border-bottom-right-radius: 2px;
+        }
+        .chat-msg.ai .chat-bubble {
+            background: var(--surface-elevated);
+            border: 1px solid var(--border);
+            color: var(--text-main);
+            border-bottom-left-radius: 2px;
+            width: 100%;
+        }
+        .chat-input-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
     </style>
 </head>
 <body>
@@ -1564,32 +1744,52 @@ HTML_TEMPLATE = """
             <div id="targetsListContainer"></div>
         </div>
 
-        <!-- TAB 3: CHIEDI A FANTALAB AI -->
+        <!-- TAB 3: CHIEDI A FANTALAB AI CHATBOT -->
         <div id="tab-ai" class="tab-content">
-            <div class="ai-query-card">
-                <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
-                    <img src="/avatar.jpg" alt="FantaLab AI" style="width:36px; height:36px; border-radius:50%; object-fit:cover; border:2px solid var(--primary);" onerror="this.src='/static/avatar.jpg'">
-                    <div>
-                        <div style="font-weight:800; font-size:1rem; color:var(--text-main);">Chiedi a FantaLab AI</div>
-                        <div style="font-size:0.75rem; color:var(--primary); font-weight:600;">Interroga il modello ML e i dati analitici del listone</div>
+            <div class="card" style="border-top:3px solid var(--primary); padding:16px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid var(--border); padding-bottom:10px;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <img src="/avatar.jpg" alt="FantaLab AI" style="width:38px; height:38px; border-radius:50%; object-fit:cover; border:2px solid var(--primary);" onerror="this.src='/static/avatar.jpg'">
+                        <div>
+                            <div style="font-weight:800; font-size:1.05rem; color:var(--text-main);">FantaLab AI Chatbot</div>
+                            <div style="font-size:0.75rem; color:var(--primary); font-weight:600;">Consulente Tattico con RAG & VORP Live</div>
+                        </div>
+                    </div>
+                    <button class="btn-secondary" onclick="clearAIChat()" style="width:auto; padding:6px 12px; font-size:0.78rem; font-weight:700;">
+                        Pulisci Chat
+                    </button>
+                </div>
+
+                <!-- Chat Quick Chips -->
+                <div class="pills" style="margin-bottom:10px;">
+                    <div class="ai-pill" onclick="setAIQuery('Analizza la mia squadra e dimmi cosa manca')">Diagnosi Rosa</div>
+                    <div class="ai-pill" onclick="setAIQuery('Malen vs Lautaro Martinez')">Malen vs Lautaro</div>
+                    <div class="ai-pill" onclick="setAIQuery('Migliori centrocampisti sotto 35 crediti')">Centrocampisti < 35cr</div>
+                    <div class="ai-pill" onclick="setAIQuery('Top difensori per modificatore')">Modificatore Difesa</div>
+                    <div class="ai-pill" onclick="setAIQuery('Scommesse attaccanti a 1 credito')">Scommesse a 1cr</div>
+                    <div class="ai-pill" onclick="setAIQuery('Scheda Dimarco')">Analizza Dimarco</div>
+                </div>
+
+                <!-- Conversational Message Stream -->
+                <div id="chatMessagesStream" class="chat-container">
+                    <div class="chat-msg ai">
+                        <img src="/avatar.jpg" alt="AI" class="chat-msg-avatar" onerror="this.src='/static/avatar.jpg'">
+                        <div class="chat-bubble">
+                            <b>Ciao! Sono FantaLab AI.</b><br>
+                            Conosco in tempo reale la tua rosa, i tuoi crediti residui e l'intero listone con VORP, xG e formazioni ufficiali.<br>
+                            Chiedimi confronti diretti tra calciatori, strategie di bilancio o suggerimenti per i tuoi slot liberi!
+                        </div>
                     </div>
                 </div>
 
-                <div class="pills" style="margin-bottom:10px;">
-                    <div class="ai-pill" onclick="setAIQuery('Malen vs Lautaro Martinez')">Malen vs Lautaro</div>
-                    <div class="ai-pill" onclick="setAIQuery('Analizza Dimarco')">Analizza Dimarco</div>
-                    <div class="ai-pill" onclick="setAIQuery('Migliori centrocampisti sotto 40 crediti')">Centrocampisti < 40cr</div>
-                    <div class="ai-pill" onclick="setAIQuery('Top difensori per modificatore')">Difensori Modificatore</div>
-                    <div class="ai-pill" onclick="setAIQuery('Scommesse attaccanti 1 credito')">Scommesse a 1cr</div>
-                </div>
-
-                <div style="display:flex; gap:8px;">
-                    <input type="text" id="aiInputPrompt" placeholder="Fai una domanda (es. 'Confronta Calhanoglu e McTominay')..." style="margin-bottom:0;" onkeypress="if(event.key==='Enter') submitAIQuery()">
-                    <button class="btn-primary" style="width:auto; padding:0 16px; border-radius:8px; font-weight:700;" onclick="submitAIQuery()">Chiedi</button>
+                <!-- Input Row -->
+                <div class="chat-input-row">
+                    <input type="text" id="aiInputPrompt" placeholder="Fai una domanda (es. 'Chi prendo tra Lookman e Thuram?')..." style="margin-bottom:0; flex:1;" onkeypress="if(event.key==='Enter') submitAIQuery()">
+                    <button class="btn btn-primary" id="btnSubmitAI" style="width:auto; min-height:46px; padding:0 18px; font-weight:700;" onclick="submitAIQuery()">
+                        Invia
+                    </button>
                 </div>
             </div>
-
-            <div id="aiResponseContainer"></div>
         </div>
 
         <!-- TAB 4: STRATEGIA & SCALA SLOT -->
@@ -2343,24 +2543,55 @@ HTML_TEMPLATE = """
         }
 
         /* ─────────────────────────────────────────────────────────────
-           ALFANOSBOT AI QUERY ENGINE
+           FANTALAB AI CONVERSATIONAL CHATBOT ENGINE
         ───────────────────────────────────────────────────────────── */
         function setAIQuery(queryText) {
             document.getElementById('aiInputPrompt').value = queryText;
             submitAIQuery();
         }
 
-        async function submitAIQuery() {
-            const prompt = document.getElementById('aiInputPrompt').value.trim();
-            if (!prompt) return;
-
-            const container = document.getElementById('aiResponseContainer');
-            container.innerHTML = `
-                <div class="card" style="text-align:center; padding:24px;">
-                    <div style="color:var(--primary); font-weight:700;">FantaLab AI sta elaborando la richiesta...</div>
-                    <div style="font-size:0.75rem; color:var(--text-muted); margin-top:4px;">Consultazione matrici VORP, xG e formazioni reali in corso</div>
+        function clearAIChat() {
+            const stream = document.getElementById('chatMessagesStream');
+            stream.innerHTML = `
+                <div class="chat-msg ai">
+                    <img src="/avatar.jpg" alt="AI" class="chat-msg-avatar" onerror="this.src='/static/avatar.jpg'">
+                    <div class="chat-bubble">
+                        <b>Chat azzerata.</b><br>
+                        Come posso aiutarti? Chiedimi confronti tra giocatori, diagnosi sul tuo bilancio o scommesse per completare la rosa!
+                    </div>
                 </div>
             `;
+        }
+
+        async function submitAIQuery() {
+            const input = document.getElementById('aiInputPrompt');
+            const prompt = input.value.trim();
+            if (!prompt) return;
+
+            const stream = document.getElementById('chatMessagesStream');
+            const btn = document.getElementById('btnSubmitAI');
+
+            // 1. Append User Message Bubble
+            const userMsg = document.createElement('div');
+            userMsg.className = 'chat-msg user';
+            userMsg.innerHTML = `<div class="chat-bubble">${escapeHTML(prompt)}</div>`;
+            stream.appendChild(userMsg);
+
+            input.value = '';
+            if (btn) btn.disabled = true;
+
+            // 2. Append Temporary Loading Bubble
+            const loadingMsg = document.createElement('div');
+            loadingMsg.className = 'chat-msg ai';
+            loadingMsg.id = 'aiChatLoadingBubble';
+            loadingMsg.innerHTML = `
+                <img src="/avatar.jpg" alt="AI" class="chat-msg-avatar" onerror="this.src='/static/avatar.jpg'">
+                <div class="chat-bubble" style="color:var(--text-muted); font-style:italic;">
+                    Sto analizzando i dati del listone, VORP e formazioni reali...
+                </div>
+            `;
+            stream.appendChild(loadingMsg);
+            stream.scrollTop = stream.scrollHeight;
 
             try {
                 const res = await fetch('/api/ai_query', {
@@ -2369,115 +2600,169 @@ HTML_TEMPLATE = """
                     body: JSON.stringify({ prompt: prompt, profile_id: activeProfileId })
                 });
                 const data = await res.json();
-                renderAIResponse(data);
+
+                // Remove loading bubble
+                const loadElem = document.getElementById('aiChatLoadingBubble');
+                if (loadElem) loadElem.remove();
+
+                // 3. Append AI Response Bubble
+                const aiMsg = document.createElement('div');
+                aiMsg.className = 'chat-msg ai';
+                aiMsg.innerHTML = `
+                    <img src="/avatar.jpg" alt="AI" class="chat-msg-avatar" onerror="this.src='/static/avatar.jpg'">
+                    <div class="chat-bubble">
+                        ${renderAIChatContent(data)}
+                    </div>
+                `;
+                stream.appendChild(aiMsg);
             } catch(e) {
-                container.innerHTML = `<div class="card" style="color:var(--danger);">Errore durante l'elaborazione della richiesta AI.</div>`;
+                const loadElem = document.getElementById('aiChatLoadingBubble');
+                if (loadElem) loadElem.remove();
+
+                const errBubble = document.createElement('div');
+                errBubble.className = 'chat-msg ai';
+                errBubble.innerHTML = `
+                    <img src="/avatar.jpg" alt="AI" class="chat-msg-avatar" onerror="this.src='/static/avatar.jpg'">
+                    <div class="chat-bubble" style="color:var(--danger);">
+                        Errore di elaborazione. Riprova con un'altra domanda.
+                    </div>
+                `;
+                stream.appendChild(errBubble);
             }
+
+            if (btn) btn.disabled = false;
+            stream.scrollTop = stream.scrollHeight;
         }
 
-        function renderAIResponse(data) {
-            const container = document.getElementById('aiResponseContainer');
-            let html = '';
+        function escapeHTML(str) {
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
 
-            if (data.type === 'comparison') {
-                const p1 = data.p1;
-                const p2 = data.p2;
-                html = `
-                    <div class="card" style="border-left:4px solid var(--primary);">
-                        <div class="card-header">
-                            <div class="card-title">${data.title}</div>
+        function formatMarkdownText(text) {
+            if (!text) return '';
+            let formatted = escapeHTML(text);
+            formatted = formatted.replace(/\\*\\*(.*?)\\*\\*/g, '<b>$1</b>');
+            formatted = formatted.replace(/\\*(.*?)\\*/g, '<i>$1</i>');
+            formatted = formatted.replace(/\\n\\n/g, '<br><br>');
+            formatted = formatted.replace(/\\n- /g, '<br>&bull; ');
+            formatted = formatted.replace(/\\n/g, '<br>');
+            return formatted;
+        }
+
+        function renderAIChatContent(data) {
+            if (!data) return 'Nessuna risposta disponibile.';
+
+            if (data.type === 'llm_chat') {
+                return `<div>${formatMarkdownText(data.text)}</div>`;
+            }
+
+            if (data.type === 'roster_diagnostic') {
+                const s = data.stats;
+                return `
+                    <div>
+                        <div style="font-weight:800; font-size:1.02rem; color:var(--primary); margin-bottom:8px;">${data.title}</div>
+                        <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:6px; background:#0b111e; padding:8px 10px; border-radius:8px; margin-bottom:10px; font-size:0.82rem;">
+                            <div>Crediti Residui: <b style="color:var(--gold);">${s.remaining} cr</b></div>
+                            <div>Max Rilancio: <b style="color:var(--danger);">${s.max_bid} cr</b></div>
+                            <div>Slot Liberi: <b>${s.free_slots.total}</b> (P:${s.free_slots.P} D:${s.free_slots.D} C:${s.free_slots.C} A:${s.free_slots.A})</div>
+                            <div>Media cr/slot: <b>${s.avg_per_slot} cr</b></div>
                         </div>
-                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:12px;">
-                            <div style="background:#0b111e; padding:10px; border-radius:8px; border:1px solid var(--border);">
-                                <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
-                                    <span class="badge badge-${p1.role}">${p1.role}</span>
-                                    <b>${p1.name}</b> <small>(${p1.team})</small>
-                                </div>
-                                <div style="font-size:0.78rem; line-height:1.6;">
-                                    <div>Punti Attesi: <b>${p1.pts_exp} pts</b></div>
-                                    <div>Fair Price: <b style="color:var(--gold);">${p1.fair_1000} cr</b></div>
-                                    <div>VORP: <b style="color:var(--success);">+${p1.vorp}</b></div>
-                                    <div>Presenze Start: <b>${p1.starts}/2</b></div>
-                                    <div>Stop Infortuni: <b>${p1.injury_days} gg</b></div>
-                                </div>
-                            </div>
-                            <div style="background:#0b111e; padding:10px; border-radius:8px; border:1px solid var(--border);">
-                                <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
-                                    <span class="badge badge-${p2.role}">${p2.role}</span>
-                                    <b>${p2.name}</b> <small>(${p2.team})</small>
-                                </div>
-                                <div style="font-size:0.78rem; line-height:1.6;">
-                                    <div>Punti Attesi: <b>${p2.pts_exp} pts</b></div>
-                                    <div>Fair Price: <b style="color:var(--gold);">${p2.fair_1000} cr</b></div>
-                                    <div>VORP: <b style="color:var(--success);">+${p2.vorp}</b></div>
-                                    <div>Presenze Start: <b>${p2.starts}/2</b></div>
-                                    <div>Stop Infortuni: <b>${p2.injury_days} gg</b></div>
-                                </div>
-                            </div>
+                        <div style="margin-bottom:8px;">
+                            ${data.advice.map(a => `<div style="margin-bottom:4px; font-size:0.85rem;">&bull; ${a}</div>`).join('')}
                         </div>
-                        <div style="background:rgba(56,189,248,0.06); border:1px solid rgba(56,189,248,0.3); border-radius:8px; padding:10px; font-size:0.82rem;">
-                            <b>${data.verdict}</b>
-                        </div>
-                    </div>
-                `;
-            } else if (data.type === 'player_deepdive') {
-                const p = data.player;
-                html = `
-                    <div class="card" style="border-left:4px solid var(--gold);">
-                        <div class="card-header">
-                            <div class="card-title">${data.title}</div>
-                        </div>
-                        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; text-align:center; margin-bottom:12px;">
-                            <div style="background:#0b111e; padding:8px; border-radius:6px; border:1px solid var(--border);">
-                                <div style="font-size:0.68rem; color:var(--text-muted); font-weight:700;">PROIEZIONE ATTESA</div>
-                                <div style="font-size:1.1rem; font-weight:800; color:var(--primary);">${p.pts_exp} pts</div>
-                                <div style="font-size:0.65rem; color:var(--text-muted);">Floor ${p.pts_floor} | Ceil ${p.pts_ceil}</div>
-                            </div>
-                            <div style="background:#0b111e; padding:8px; border-radius:6px; border:1px solid var(--border);">
-                                <div style="font-size:0.68rem; color:var(--text-muted); font-weight:700;">FAIR PRICE 1000</div>
-                                <div style="font-size:1.1rem; font-weight:800; color:var(--gold);">${p.fair_1000} cr</div>
-                                <div style="font-size:0.65rem; color:var(--success);">Surplus +${p.surplus} cr</div>
-                            </div>
-                            <div style="background:#0b111e; padding:8px; border-radius:6px; border:1px solid var(--border);">
-                                <div style="font-size:0.68rem; color:var(--text-muted); font-weight:700;">TITOLARITÀ REALE</div>
-                                <div style="font-size:1.1rem; font-weight:800; color:var(--success);">${p.starts} start</div>
-                                <div style="font-size:0.65rem; color:var(--text-muted);">${p.minutes} min giocati</div>
-                            </div>
-                        </div>
-                        <div style="background:rgba(56,189,248,0.06); border:1px solid rgba(56,189,248,0.3); border-radius:8px; padding:10px; font-size:0.82rem; margin-bottom:10px;">
+                        <div style="background:rgba(56,189,248,0.08); border-left:3px solid var(--primary); padding:8px 10px; border-radius:4px; font-size:0.85rem;">
                             ${data.verdict}
                         </div>
-                        <button class="btn btn-secondary" onclick="openTargetModal('${p.name.replace(/'/g, "\\\\'")}')">Aggiungi ai Miei Target</button>
                     </div>
                 `;
-            } else if (data.type === 'recommendations') {
-                html = `
-                    <div class="card" style="border-left:4px solid var(--success);">
-                        <div class="card-header">
-                            <div class="card-title">${data.title}</div>
-                        </div>
-                        <div style="margin-bottom:12px;">
-                            ${data.players.map(p => `
-                                <div class="candidate-mini-row" onclick="openTargetModal('${p.name.replace(/'/g, "\\\\'")}')">
-                                    <div style="display:flex; align-items:center; gap:6px;">
+            }
+
+            if (data.type === 'comparison') {
+                const players = data.players || [];
+                return `
+                    <div>
+                        <div style="font-weight:800; font-size:1rem; color:var(--primary); margin-bottom:10px;">${data.title}</div>
+                        <div style="display:grid; grid-template-columns:${players.length > 2 ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)'}; gap:8px; margin-bottom:10px;">
+                            ${players.map(p => `
+                                <div style="background:#0b111e; padding:10px 8px; border-radius:8px; border:1px solid var(--border); font-size:0.82rem;">
+                                    <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
                                         <span class="badge badge-${p.role}">${p.role}</span>
-                                        <b>${p.name}</b> <small style="color:var(--text-muted);">(${p.team} - ${p.starts} start)</small>
+                                        <b>${p.name}</b>
+                                    </div>
+                                    <div style="color:var(--text-muted); font-size:0.75rem; margin-bottom:4px;">${p.team} - ${p.starts} start</div>
+                                    <div>Punti Attesi: <b>${p.pts_exp} pts</b></div>
+                                    <div>Fair Price: <b style="color:var(--gold);">${p.fair_1000} cr</b></div>
+                                    <div>VORP: <b style="color:var(--success);">+${p.vorp}</b></div>
+                                    <div>Infortuni: <small style="color:${p.injury_days > 40 ? 'var(--danger)' : 'var(--text-muted)'};">${p.injury_days} gg</small></div>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div style="background:rgba(56,189,248,0.08); border-left:3px solid var(--primary); padding:8px 10px; border-radius:4px; font-size:0.85rem;">
+                            ${formatMarkdownText(data.verdict)}
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (data.type === 'player_deepdive') {
+                const p = data.player;
+                return `
+                    <div>
+                        <div style="font-weight:800; font-size:1.02rem; color:var(--gold); margin-bottom:8px;">${data.title}</div>
+                        <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; text-align:center; margin-bottom:10px;">
+                            <div style="background:#0b111e; padding:8px; border-radius:6px; border:1px solid var(--border);">
+                                <div style="font-size:0.7rem; color:var(--text-muted); font-weight:700;">PROIEZIONE P50</div>
+                                <div style="font-size:1.1rem; font-weight:800; color:var(--primary);">${p.pts_exp} pts</div>
+                                <div style="font-size:0.7rem; color:var(--text-muted);">${p.pts_floor} - ${p.pts_ceil}</div>
+                            </div>
+                            <div style="background:#0b111e; padding:8px; border-radius:6px; border:1px solid var(--border);">
+                                <div style="font-size:0.7rem; color:var(--text-muted); font-weight:700;">FAIR PRICE 1000</div>
+                                <div style="font-size:1.1rem; font-weight:800; color:var(--gold);">${p.fair_1000} cr</div>
+                                <div style="font-size:0.7rem; color:var(--success);">Surplus +${p.surplus} cr</div>
+                            </div>
+                            <div style="background:#0b111e; padding:8px; border-radius:6px; border:1px solid var(--border);">
+                                <div style="font-size:0.7rem; color:var(--text-muted); font-weight:700;">TITOLARITÀ REALE</div>
+                                <div style="font-size:1.1rem; font-weight:800; color:var(--success);">${p.starts} start</div>
+                                <div style="font-size:0.7rem; color:var(--text-muted);">${p.minutes} min</div>
+                            </div>
+                        </div>
+                        <div style="background:rgba(56,189,248,0.08); border-left:3px solid var(--gold); padding:8px 10px; border-radius:4px; font-size:0.85rem; margin-bottom:8px;">
+                            ${formatMarkdownText(data.verdict)}
+                        </div>
+                        <button class="btn btn-secondary" style="padding:6px 12px; font-size:0.82rem;" onclick="openTargetModal('${p.name.replace(/'/g, "\\\\'")}')">
+                            + Aggiungi ai Miei Target
+                        </button>
+                    </div>
+                `;
+            }
+
+            if (data.type === 'recommendations') {
+                const players = data.players || [];
+                return `
+                    <div>
+                        <div style="font-weight:800; font-size:1rem; color:var(--success); margin-bottom:8px;">${data.title}</div>
+                        <div style="margin-bottom:10px;">
+                            ${players.map(p => `
+                                <div class="candidate-mini-row" onclick="openTargetModal('${p.name.replace(/'/g, "\\\\'")}')">
+                                    <div style="display:flex; align-items:center; gap:8px;">
+                                        <span class="badge badge-${p.role}">${p.role}</span>
+                                        <b>${p.name}</b> <small style="color:var(--text-muted);">(${p.team})</small>
                                     </div>
                                     <div style="text-align:right;">
-                                        <span style="color:var(--gold); font-weight:800;">${p.fair_1000} cr</span>
-                                        <span style="color:var(--primary); font-size:0.75rem; margin-left:6px;">+${p.vorp} vorp</span>
+                                        <span style="color:var(--gold); font-weight:800; font-size:0.95rem;">${p.fair_1000} cr</span>
+                                        <span style="color:var(--primary); font-size:0.78rem; margin-left:6px;">+${p.vorp} vorp</span>
                                     </div>
                                 </div>
                             `).join('')}
                         </div>
-                        <div style="background:rgba(16,185,129,0.06); border:1px solid rgba(16,185,129,0.3); border-radius:8px; padding:10px; font-size:0.82rem;">
-                            ${data.verdict}
+                        <div style="background:rgba(16,185,129,0.08); border-left:3px solid var(--success); padding:8px 10px; border-radius:4px; font-size:0.85rem;">
+                            ${formatMarkdownText(data.verdict)}
                         </div>
                     </div>
                 `;
             }
 
-            container.innerHTML = html;
+            return formatMarkdownText(data.verdict || JSON.stringify(data));
         }
 
         /* ─────────────────────────────────────────────────────────────
