@@ -2,9 +2,9 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Data Sources](https://img.shields.io/badge/sources-Historical%20Stats%20%7C%20Understat%20%7C%20Transfermarkt-orange.svg)](#credits--ingestion-sources)
 [![Optimization: MILP](https://img.shields.io/badge/optimizer-SciPy%20MILP%20Knapsack-purple.svg)](https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.milp.html)
 [![ML: Quantile Regression](https://img.shields.io/badge/ML-Scikit--Learn%20Quantile%20GBR-yellow.svg)](https://scikit-learn.org/)
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Donate-yellow.svg?logo=buy-me-a-coffee)](https://buymeacoffee.com/spectrelabo)
 
 A modular, data-driven pipeline for data extraction, probabilistic machine learning projections, sabermetric valuation (VORP), mathematical roster optimization, and modern live draft command center for fantasy football auctions (Fantacalcio Serie A).
 
@@ -324,6 +324,14 @@ This project stands on the shoulders of the open-source football analytics commu
 - **[Scrape-FBref-data](https://github.com/parth1902/Scrape-FBref-data)**: Utility for structured data extraction.
 - **[Understat.com](https://understat.com/)**: Shot-level analytics, Expected Goals ($xG$), and Expected Assists ($xA$).
 - **[Transfermarkt.com](https://www.transfermarkt.com/)**: Comprehensive injury logs, missed match records, and medical histories.
+
+---
+
+## Support the Project
+
+If `fanta-lab` prevented an emotional 2:00 AM panic buy, saved your budget, or gave you an algorithmic edge in your fantasy auction, consider buying a coffee to support ongoing open-source maintenance:
+
+[![Buy Me A Coffee](https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png)](https://buymeacoffee.com/spectrelabo)
 
 ---
 

@@ -1646,6 +1646,12 @@ HTML_TEMPLATE = """
                 <div id="sideProfileName" style="font-weight:800; font-size:0.95rem; color:var(--text-main);">Io</div>
                 <div id="sideProfileBudget" style="color:var(--gold); font-weight:700; font-size:0.85rem; margin-top:2px;">1000 cr residui</div>
             </div>
+
+            <div style="margin-top:auto; padding:12px 10px; text-align:center;">
+                <a href="https://buymeacoffee.com/spectrelabo" target="_blank" rel="noopener noreferrer" style="display:inline-flex; align-items:center; justify-content:center; gap:6px; background:#fbbf24; color:#090d16; font-size:0.75rem; font-weight:800; padding:6px 14px; border-radius:20px; text-decoration:none; box-shadow:0 2px 8px rgba(251,191,36,0.3); width:100%;">
+                    <span>☕ Offri un Caffè</span>
+                </a>
+            </div>
         </aside>
 
         <!-- MAIN CONTENT WRAPPER -->
