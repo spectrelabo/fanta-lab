@@ -77,16 +77,16 @@ Where $\delta_{role}$ represents the maximum allowed emotional tolerance (typica
 
 ---
 
-## 4. FantaLab AI: Grounded RAG & Tactical Guardrails
+## 4. FantaLab AI: Model-Agnostic LLM & Tactical Copilot
 
-The built-in assistant is designed to prevent emotional hallucinations during bidding wars.
+The built-in assistant is designed to prevent emotional hallucinations during bidding wars. It is completely **model-agnostic**, allowing you to plug in local offline models (Ollama, vLLM, LMStudio) or cloud APIs (OpenAI, DeepSeek, Groq, Gemini) via standard environment variables:
 
 ```mermaid
 sequenceDiagram
     participant User as Manager
     participant App as app.py
     participant DB as Listone Dataset (530+ rows)
-    participant LLM as Gemini 3.5 Flash-Lite / Local NLP
+    participant LLM as Ollama (Llama 3.1 / Qwen 2.5) / OpenAI / Gemini / Local Math
 
     User->>App: "Chi prendo tra Lautaro e Thuram con 380 crediti?"
     App->>DB: Extract Stats: VORP, P50, Fair Price, Injury Days
@@ -95,18 +95,46 @@ sequenceDiagram
     App-->>User: Render Comparative Card + 1-Click Wishlist Button
 ```
 
-### 4.1. The Dual-Engine Fail-Safe
-1. **Cloud Neural Engine (Google Gemini 3.5 Flash-Lite)**:
-   - When configured with `GEMINI_API_KEY`, the server injects the active manager's live budget, empty slots, and listone metrics into a prompt with a sub-500ms response time.
-   - Grounded strictly on verified data: zero hallucinated statistics or fabricated prices.
-2. **Zero-Latency Local Quantitative Reasoner (Fallback Engine)**:
-   - If offline or if API quotas are saturated, an internal analytical engine processes multi-player comparisons, squad health diagnostics, role/budget filtering, and deep-dive analytical cards with mathematical certainty.
-   - **Zero Cost Guarantee**: Completely immune to unexpected billing or cloud rate-limit lockouts.
+### 4.1. Plug-and-Play LLM Architecture
+Configure your preferred backend in `.env` or system environment:
+
+```bash
+# Option 1: Local Ollama (100% Offline & Free)
+LLM_BASE_URL="http://localhost:11434/v1"
+LLM_MODEL="llama3.1"
+
+# Option 2: OpenAI / DeepSeek / Groq (OpenAI-compatible)
+LLM_BASE_URL="https://api.openai.com/v1"
+LLM_API_KEY="sk-..."
+LLM_MODEL="gpt-4o-mini"
+
+# Option 3: Google Gemini Native REST (Free Tier)
+GEMINI_API_KEY="AIzaSy..."
+
+# Option 4: Zero Configuration
+# Runs the built-in Local Quantitative Reasoner automatically (0 latency, 0 cost).
+```
 
 ---
 
-## 5. Live Auction UX & The Anti-Clutter Filter
+## 5. UI Showcase & Interactive Modules
 
-- **"Solo Svincolati" Toggle**: During live auctions, visually scanning 500+ players is cognitive poison. A single click hides all assigned players, instantly narrowing the field to active targets.
-- **Opacity & Assignment Tagging**: Assigned assets remain softly visible ($40\%$ opacity) with exact purchasing franchise and price badges for market inflation auditing.
-- **Mobile-First Responsive Layout**: All tables, comparison grids, and quick-bid buttons feature 44px+ touch targets and native scrolling containers for seamless tablet and smartphone operation.
+### 5.1. Command Center & Manager Roster Overview
+Live tracking of remaining budget, max single-bid capacity ($B_{rem} - S_{free} + 1$), and department expenditure breakdowns.
+
+![Command Center Overview](assets/command_center_overview.png)
+
+### 5.2. Scala Slot: Tactical Blueprints & Dynamic Stop-Loss
+5 tactical philosophies adapting per-slot budget targets and Stop-Loss limits as players are drafted.
+
+![Scala Slot Tactics](assets/scala_slot_tactics.png)
+
+### 5.3. Conversational AI Tactical Copilot
+Interactive multi-turn chatbot with RAG context grounding and 1-click wishlist additions.
+
+![AI Tactical Copilot](assets/ai_tactical_copilot.png)
+
+### 5.4. Listone Analytics & "Solo Svincolati" Anti-Clutter Filter
+Clean listone with instant filtering of assigned players and real-time multiplayer updates.
+
+![Listone Analytics](assets/listone_analytics.png)

@@ -642,10 +642,14 @@ def api_ai_query():
     prompt_lower = prompt.lower()
 
     # ─────────────────────────────────────────────────────────────
-    # 1. OPTIONAL GEMINI 1.5 FLASH FREE-TIER INTEGRATION
+    # 1. MODEL-AGNOSTIC LLM INTEGRATION (Ollama, vLLM, OpenAI, DeepSeek, Gemini)
     # ─────────────────────────────────────────────────────────────
+    llm_base_url = os.environ.get("LLM_BASE_URL") or os.environ.get("OPENAI_BASE_URL")
+    llm_api_key = os.environ.get("LLM_API_KEY") or os.environ.get("OPENAI_API_KEY")
+    llm_model = os.environ.get("LLM_MODEL", "llama3.1")
     gemini_key = os.environ.get("GEMINI_API_KEY")
-    if gemini_key:
+
+    if llm_base_url or gemini_key or llm_api_key:
         try:
             # Build condensed context: user squad state + top available players
             unassigned_df = df[~df['player'].isin(assigned.keys())]
@@ -664,33 +668,63 @@ def api_ai_query():
                 "3. Rispondi in italiano in formato Markdown pulito."
             )
 
-            payload = {
-                "contents": [
-                    {
-                        "role": "user",
-                        "parts": [
-                            {"text": f"System Context:\n{system_instruction}\n\nTop Giocatori Liberi di Riferimento:\n{json.dumps(top_sample, ensure_ascii=False)}\n\nDomanda del manager: {prompt}"}
-                        ]
-                    }
-                ],
-                "generationConfig": {
-                    "temperature": 0.35,
-                    "maxOutputTokens": 650
-                }
-            }
+            # Option A: Universal OpenAI-compatible API (Ollama, vLLM, LMStudio, OpenAI, Groq, DeepSeek)
+            if llm_base_url or (llm_api_key and not gemini_key):
+                base = (llm_base_url or "http://localhost:11434/v1").rstrip("/")
+                endpoint = f"{base}/chat/completions"
+                headers = {"Content-Type": "application/json"}
+                if llm_api_key:
+                    headers["Authorization"] = f"Bearer {llm_api_key}"
 
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key={gemini_key}"
-            resp = requests.post(url, json=payload, timeout=10)
-            if resp.status_code == 200:
-                res_json = resp.json()
-                reply = res_json.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip()
-                if reply:
-                    return jsonify({
-                        "type": "llm_chat",
-                        "title": "Risposta Tattica FantaLab AI",
-                        "text": reply,
-                        "engine": "gemini-3.5-flash-lite"
-                    })
+                payload = {
+                    "model": llm_model,
+                    "messages": [
+                        {"role": "system", "content": system_instruction},
+                        {"role": "user", "content": f"Top Giocatori Liberi di Riferimento:\n{json.dumps(top_sample, ensure_ascii=False)}\n\nDomanda del manager: {prompt}"}
+                    ],
+                    "temperature": 0.35,
+                    "max_tokens": 650
+                }
+
+                resp = requests.post(endpoint, json=payload, headers=headers, timeout=8)
+                if resp.status_code == 200:
+                    reply = resp.json().get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+                    if reply:
+                        return jsonify({
+                            "type": "llm_chat",
+                            "title": "Risposta Tattica FantaLab AI",
+                            "text": reply,
+                            "engine": f"{llm_model}"
+                        })
+
+            # Option B: Google Gemini Native REST Endpoint
+            elif gemini_key:
+                payload = {
+                    "contents": [
+                        {
+                            "role": "user",
+                            "parts": [
+                                {"text": f"System Context:\n{system_instruction}\n\nTop Giocatori Liberi di Riferimento:\n{json.dumps(top_sample, ensure_ascii=False)}\n\nDomanda del manager: {prompt}"}
+                            ]
+                        }
+                    ],
+                    "generationConfig": {
+                        "temperature": 0.35,
+                        "maxOutputTokens": 650
+                    }
+                }
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key={gemini_key}"
+                resp = requests.post(url, json=payload, timeout=8)
+                if resp.status_code == 200:
+                    res_json = resp.json()
+                    reply = res_json.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip()
+                    if reply:
+                        return jsonify({
+                            "type": "llm_chat",
+                            "title": "Risposta Tattica FantaLab AI",
+                            "text": reply,
+                            "engine": "gemini-3.5-flash-lite"
+                        })
         except Exception:
             pass  # Transparently fallback to local quantitative engine
 
@@ -2280,6 +2314,13 @@ HTML_TEMPLATE = """
             renderStrategyTab();
             renderTargetsTab();
             setupSearch();
+
+            if (window.location.hash) {
+                const tabName = window.location.hash.replace('#', '');
+                if (['draft', 'targets', 'ai', 'strategy', 'rosters', 'listone'].includes(tabName)) {
+                    switchTab(tabName);
+                }
+            }
 
             // Periodic live refresh polling for real-time multiplayer updates (every 4s)
             setInterval(async () => {

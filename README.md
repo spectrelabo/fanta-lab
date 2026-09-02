@@ -20,16 +20,23 @@ While the scientific pipeline computes optimal baselines in peace, fantasy draft
 - **Independent Manager Isolation**: Select your franchise with client-side `localStorage` isolation (private target wishlists, customized max credit caps, personal notes).
 - **5 Dynamic Tactical Blueprints**: Real-time budget allocation (*Trazione Anteriore, Modificatore di Ferro, Centrocampo Dominante, Moneyball, Custom*) with mathematical **Stop-Loss ceilings** that adapt as players leave the board.
 - **Admin-Gated Live Draft (Battitore)**: Password-protected admin engine (`ADMIN_PASSWORD` or `fanta2026`) allowing the commissioner to call, bid, and assign players with real-time budget synchronization across all participants.
-- **Conversational AI Tactical Copilot**: RAG-powered chat assistant running Google **Gemini 3.5 Flash-Lite** (with zero-cost local quantitative NLP fallback) to run multi-player comparisons, squad diagnostics, and anti-panic budget audits.
+- **Conversational AI Tactical Copilot**: RAG-powered chat assistant supporting **any LLM** (local Ollama with Llama 3.1 / Qwen 2.5, OpenAI, vLLM, DeepSeek, Gemini, or built-in local quantitative reasoner) to run comparisons, squad diagnostics, and anti-panic audits.
 - **Anti-Clutter Live Filters**: 1-click **Solo Svincolati** toggle to instantly hide drafted players, alongside assignment opacity tagging and mobile-first touch controls.
 
-### Quickstart & Deployment
+![Fanta-Lab Command Center](docs/assets/command_center_overview.png)
+
+### Quickstart & Model-Agnostic LLM Setup
 ```bash
-# 1. Run locally (Port 5001)
+# 1. Run Web Command Center (Port 5050)
 python3 app.py
 
-# 2. (Optional) Enable Google Gemini 3.5 Flash-Lite for the AI Copilot
-echo "GEMINI_API_KEY=your_key_here" > .env
+# 2. (Optional) Connect your preferred LLM in .env:
+# Local Ollama (100% Free & Offline):
+echo "LLM_BASE_URL=http://localhost:11434/v1" >> .env
+echo "LLM_MODEL=llama3.1" >> .env
+
+# Or OpenAI / DeepSeek / Groq:
+# echo "LLM_API_KEY=sk-... \nLLM_MODEL=gpt-4o-mini" >> .env
 ```
 Standard serverless cloud configuration for private hosting (Vercel, Render, Railway) is available via [`vercel.json`](vercel.json).
 
