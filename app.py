@@ -1752,8 +1752,11 @@ HTML_TEMPLATE = """
                 <div class="pill" onclick="setFasciaFilter('4')">4ª Fascia Scommesse</div>
             </div>
 
-            <div style="display:flex; gap:8px; margin-bottom:10px;">
-                <input type="text" id="listSearch" placeholder="Cerca calciatore o squadra..." oninput="renderListone()" style="margin-bottom:0;">
+            <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
+                <input type="text" id="listSearch" placeholder="Cerca calciatore o squadra..." oninput="renderListone()" style="margin-bottom:0; flex:1; min-width:160px;">
+                <button class="btn-secondary" id="filterAvailableOnlyBtn" onclick="toggleFilterAvailableOnly()" style="width:auto; padding:0 12px; white-space:nowrap; font-size:0.8rem; font-weight:700;">
+                    Solo Svincolati
+                </button>
                 <button class="btn-secondary" id="filterTargetsOnlyBtn" onclick="toggleFilterTargetsOnly()" style="width:auto; padding:0 12px; white-space:nowrap; font-size:0.8rem; font-weight:700;">
                     Solo Target
                 </button>
@@ -2077,6 +2080,7 @@ HTML_TEMPLATE = """
                     renderRosterTab();
                     renderTargetsTab();
                     renderStrategyTab();
+                    renderListone();
                 }
             }, 4000);
         }
@@ -2095,6 +2099,7 @@ HTML_TEMPLATE = """
             renderRosterTab();
             renderStrategyTab();
             renderTargetsTab();
+            renderListone();
         }
 
         async function fetchPlayers() {
@@ -2186,11 +2191,25 @@ HTML_TEMPLATE = """
             renderStrategyTab();
         }
 
+        let onlyAvailableFilter = false;
+
+        function toggleFilterAvailableOnly() {
+            onlyAvailableFilter = !onlyAvailableFilter;
+            const btn = document.getElementById('filterAvailableOnlyBtn');
+            if (btn) {
+                btn.style.background = onlyAvailableFilter ? 'var(--primary)' : 'var(--surface-elevated)';
+                btn.style.color = onlyAvailableFilter ? '#090d16' : 'var(--text-main)';
+            }
+            renderListone();
+        }
+
         function toggleFilterTargetsOnly() {
             onlyTargetsFilter = !onlyTargetsFilter;
             const btn = document.getElementById('filterTargetsOnlyBtn');
-            btn.style.background = onlyTargetsFilter ? 'var(--gold)' : 'var(--surface-elevated)';
-            btn.style.color = onlyTargetsFilter ? '#090d16' : 'var(--text-main)';
+            if (btn) {
+                btn.style.background = onlyTargetsFilter ? 'var(--gold)' : 'var(--surface-elevated)';
+                btn.style.color = onlyTargetsFilter ? '#090d16' : 'var(--text-main)';
+            }
             renderListone();
         }
 
@@ -3094,8 +3113,11 @@ HTML_TEMPLATE = """
         function renderListone() {
             const q = (document.getElementById('listSearch')?.value || '').toLowerCase();
             const userTargets = loadUserTargets();
+            const assigned = auctionState.assigned_players || {};
 
             const filtered = allPlayers.filter(p => {
+                const isAssigned = p.is_assigned || (p.player in assigned);
+                if (onlyAvailableFilter && isAssigned) return false;
                 if (onlyTargetsFilter && !(p.player in userTargets)) return false;
                 if (currentRoleFilter !== 'ALL' && p.role !== currentRoleFilter) return false;
                 if (currentFasciaFilter !== 'ALL' && String(p.fascia) !== String(currentFasciaFilter)) return false;
@@ -3104,12 +3126,19 @@ HTML_TEMPLATE = """
             });
 
             const container = document.getElementById('listoneContainer');
+            if (filtered.length === 0) {
+                container.innerHTML = '<div class="card" style="text-align:center; color:var(--text-muted); padding:24px;">Nessun calciatore trovato con i filtri selezionati.</div>';
+                return;
+            }
+
             container.innerHTML = filtered.map(p => {
+                const isAssigned = p.is_assigned || (p.player in assigned);
+                const assignmentInfo = assigned[p.player] || {};
                 const isTarget = p.player in userTargets;
                 const targetInfo = userTargets[p.player] || {};
 
                 return `
-                    <div class="player-row" style="${p.is_assigned ? 'opacity:0.35;' : ''}">
+                    <div class="player-row" style="${isAssigned ? 'opacity:0.4;' : ''}">
                         <div class="player-info">
                             <div class="player-name">
                                 <button class="target-icon-btn ${isTarget ? 'active' : ''}" onclick="openTargetModal('${p.player.replace(/'/g, "\\\\'")}')">
@@ -3117,8 +3146,9 @@ HTML_TEMPLATE = """
                                 </button>
                                 <span class="badge badge-${p.role}">${p.role}</span>
                                 <span>${p.player}</span>
-                                <span style="font-size:0.75rem; color:var(--text-muted)">(${p.team})</span>
+                                <small style="color:var(--text-muted);">(${p.team})</small>
                                 ${isTarget ? `<span class="tier-badge tier-${targetInfo.priority}">T${targetInfo.priority} (Max ${targetInfo.max_price}cr)</span>` : ''}
+                                ${isAssigned ? `<span style="color:var(--danger); font-size:0.75rem; font-weight:700; margin-left:4px;">ASSEGNATO (${assignmentInfo.team_name || ''} - ${assignmentInfo.price || ''} cr)</span>` : ''}
                             </div>
                             <div class="player-meta">
                                 Punti Attesi: <b>${p.pts_exp} pts</b> | Floor: ${p.pts_floor} | Ceil: ${p.pts_ceil} | VORP: <b>+${p.vorp}</b>
