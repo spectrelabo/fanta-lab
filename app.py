@@ -49,15 +49,15 @@ TOTAL_ROSTER_SIZE = sum(DEFAULT_ROSTER_SLOTS.values())  # 29 players
 
 DEFAULT_TEAMS = [
     {"id": 1, "name": "Io", "is_me": True},
-    {"id": 2, "name": "Manchestaneur", "is_me": False},
-    {"id": 3, "name": "Pez", "is_me": False},
+    {"id": 2, "name": "pippo", "is_me": False},i
+    {"id": 3, "name": "pluto", "is_me": False},
     {"id": 4, "name": "Aurelio", "is_me": False},
-    {"id": 5, "name": "Trittico", "is_me": False},
+    {"id": 5, "name": "gio", "is_me": False},
     {"id": 6, "name": "Andrea", "is_me": False},
-    {"id": 7, "name": "Amrap", "is_me": False},
-    {"id": 8, "name": "Pippo", "is_me": False},
+    {"id": 7, "name": "leo", "is_me": False},
+    {"id": 8, "name": "renato", "is_me": False},
     {"id": 9, "name": "Juri", "is_me": False},
-    {"id": 10, "name": "Gigi Wes", "is_me": False},
+    {"id": 10, "name": "Gigi", "is_me": False},
 ]
 
 # ──────────────────────────────────────────────────────────────────────
