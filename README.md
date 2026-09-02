@@ -13,7 +13,7 @@ A modular, data-driven pipeline for data extraction, probabilistic machine learn
 
 ---
 
-## 🚀 Spinoff: Live Auction Command Center & AI Copilot (`app.py`)
+##  Spinoff: Live Auction Command Center & AI Copilot (`app.py`)
 
 While the scientific pipeline computes optimal baselines in peace, fantasy drafts happen in the chaotic reality of high-pressure bidding rooms. The **Live Command Center Spinoff** translates theoretical models into real-time execution:
 
