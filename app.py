@@ -424,9 +424,7 @@ def send_static(path):
     return send_from_directory(os.path.join(BASE_DIR, "static"), path)
 
 
-@app.route("/avatar.jpg")
-def send_avatar():
-    return send_from_directory(os.path.join(BASE_DIR, "static"), "avatar.jpg")
+
 
 
 @app.route("/api/auth_admin", methods=["POST"])
@@ -1597,7 +1595,9 @@ HTML_TEMPLATE = """
         <aside class="app-sidebar" id="appSidebar">
             <div class="sidebar-bot-card">
                 <div class="sidebar-avatar-wrap">
-                    <img src="/avatar.jpg" alt="FantaLab AI" class="sidebar-avatar" onerror="this.src='/static/avatar.jpg'">
+                    <div class="sidebar-avatar" style="width:52px; height:52px; border-radius:50%; background:linear-gradient(135deg, #0284c7, #4f46e5); display:flex; align-items:center; justify-content:center; margin:0 auto; border:2px solid var(--primary); box-shadow: 0 0 14px rgba(56,189,248,0.4);">
+                        <svg style="width:26px; height:26px; stroke:#ffffff; fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round;" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path></svg>
+                    </div>
                 </div>
                 <div>
                     <div class="sidebar-bot-name">FantaLab AI</div>
@@ -1657,7 +1657,9 @@ HTML_TEMPLATE = """
                         <svg class="nav-svg" style="width:18px; height:18px;" viewBox="0 0 24 24"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
                     </button>
                     <div class="header-bot-pill" onclick="toggleMobileSidebar()">
-                        <img src="/avatar.jpg" alt="FantaLab AI" class="header-avatar-img" onerror="this.src='/static/avatar.jpg'">
+                        <div class="header-avatar-img" style="width:24px; height:24px; border-radius:50%; background:linear-gradient(135deg, #0284c7, #4f46e5); display:flex; align-items:center; justify-content:center; border:1px solid var(--primary); margin-right:4px;">
+                            <svg style="width:14px; height:14px; stroke:#ffffff; fill:none; stroke-width:2;" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path></svg>
+                        </div>
                         <span class="brand-title" style="font-size:0.95rem;">FantaLab AI</span>
                     </div>
                     <div class="brand-tag">PRO DECISION</div>
@@ -1796,7 +1798,9 @@ HTML_TEMPLATE = """
             <div class="card" style="border-top:3px solid var(--primary); padding:16px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid var(--border); padding-bottom:10px;">
                     <div style="display:flex; align-items:center; gap:10px;">
-                        <img src="/avatar.jpg" alt="FantaLab AI" style="width:38px; height:38px; border-radius:50%; object-fit:cover; border:2px solid var(--primary);" onerror="this.src='/static/avatar.jpg'">
+                        <div style="width:38px; height:38px; border-radius:50%; background:linear-gradient(135deg, #0284c7, #4f46e5); display:flex; align-items:center; justify-content:center; border:2px solid var(--primary); box-shadow:0 0 10px rgba(56,189,248,0.35);">
+                            <svg style="width:20px; height:20px; stroke:#ffffff; fill:none; stroke-width:2;" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path></svg>
+                        </div>
                         <div>
                             <div style="font-weight:800; font-size:1.05rem; color:var(--text-main);">FantaLab AI Chatbot</div>
                             <div style="font-size:0.75rem; color:var(--primary); font-weight:600;">Consulente Tattico con RAG & VORP Live</div>
@@ -1820,7 +1824,9 @@ HTML_TEMPLATE = """
                 <!-- Conversational Message Stream -->
                 <div id="chatMessagesStream" class="chat-container">
                     <div class="chat-msg ai">
-                        <img src="/avatar.jpg" alt="AI" class="chat-msg-avatar" onerror="this.src='/static/avatar.jpg'">
+                        <div class="chat-msg-avatar" style="width:32px; height:32px; border-radius:50%; background:linear-gradient(135deg, #0284c7, #4f46e5); display:flex; align-items:center; justify-content:center; flex-shrink:0; border:1.5px solid var(--primary);">
+                            <svg style="width:16px; height:16px; stroke:#ffffff; fill:none; stroke-width:2;" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path></svg>
+                        </div>
                         <div class="chat-bubble">
                             <b>Ciao! Sono FantaLab AI.</b><br>
                             Conosco in tempo reale la tua rosa, i tuoi crediti residui e l'intero listone con VORP, xG e formazioni ufficiali.<br>
@@ -2599,6 +2605,8 @@ HTML_TEMPLATE = """
         /* ─────────────────────────────────────────────────────────────
            FANTALAB AI CONVERSATIONAL CHATBOT ENGINE
         ───────────────────────────────────────────────────────────── */
+        const AI_AVATAR_HTML = `<div class="chat-msg-avatar" style="width:32px; height:32px; border-radius:50%; background:linear-gradient(135deg, #0284c7, #4f46e5); display:flex; align-items:center; justify-content:center; flex-shrink:0; border:1.5px solid var(--primary);"><svg style="width:16px; height:16px; stroke:#ffffff; fill:none; stroke-width:2;" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path></svg></div>`;
+
         function setAIQuery(queryText) {
             document.getElementById('aiInputPrompt').value = queryText;
             submitAIQuery();
@@ -2608,7 +2616,7 @@ HTML_TEMPLATE = """
             const stream = document.getElementById('chatMessagesStream');
             stream.innerHTML = `
                 <div class="chat-msg ai">
-                    <img src="/avatar.jpg" alt="AI" class="chat-msg-avatar" onerror="this.src='/static/avatar.jpg'">
+                    ${AI_AVATAR_HTML}
                     <div class="chat-bubble">
                         <b>Chat azzerata.</b><br>
                         Come posso aiutarti? Chiedimi confronti tra giocatori, diagnosi sul tuo bilancio o scommesse per completare la rosa!
@@ -2639,7 +2647,7 @@ HTML_TEMPLATE = """
             loadingMsg.className = 'chat-msg ai';
             loadingMsg.id = 'aiChatLoadingBubble';
             loadingMsg.innerHTML = `
-                <img src="/avatar.jpg" alt="AI" class="chat-msg-avatar" onerror="this.src='/static/avatar.jpg'">
+                ${AI_AVATAR_HTML}
                 <div class="chat-bubble" style="color:var(--text-muted); font-style:italic;">
                     Sto analizzando i dati del listone, VORP e formazioni reali...
                 </div>
@@ -2663,7 +2671,7 @@ HTML_TEMPLATE = """
                 const aiMsg = document.createElement('div');
                 aiMsg.className = 'chat-msg ai';
                 aiMsg.innerHTML = `
-                    <img src="/avatar.jpg" alt="AI" class="chat-msg-avatar" onerror="this.src='/static/avatar.jpg'">
+                    ${AI_AVATAR_HTML}
                     <div class="chat-bubble">
                         ${renderAIChatContent(data)}
                     </div>
@@ -2676,7 +2684,7 @@ HTML_TEMPLATE = """
                 const errBubble = document.createElement('div');
                 errBubble.className = 'chat-msg ai';
                 errBubble.innerHTML = `
-                    <img src="/avatar.jpg" alt="AI" class="chat-msg-avatar" onerror="this.src='/static/avatar.jpg'">
+                    ${AI_AVATAR_HTML}
                     <div class="chat-bubble" style="color:var(--danger);">
                         Errore di elaborazione. Riprova con un'altra domanda.
                     </div>
