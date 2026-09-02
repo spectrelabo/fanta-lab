@@ -8,25 +8,30 @@
 
 A modular, data-driven pipeline for data extraction, probabilistic machine learning projections, sabermetric valuation (VORP), mathematical roster optimization, and modern live draft command center for fantasy football auctions (Fantacalcio Serie A).
 
-📖 **Model Interpretability Guide**: [docs/MODEL_INTERPRETABILITY.md](docs/MODEL_INTERPRETABILITY.md)
+📖 **Model Interpretability & Math Guide**: [docs/MODEL_INTERPRETABILITY.md](docs/MODEL_INTERPRETABILITY.md)  
+🎮 **Live Draft Command Center Spinoff Guide**: [docs/LIVE_COMMAND_CENTER.md](docs/LIVE_COMMAND_CENTER.md)
 
 ---
 
-## Live Auction Command Center (`app.py`)
+## 🚀 Spinoff: Live Auction Command Center & AI Copilot (`app.py`)
 
-`fanta-lab` includes a full-featured, mobile-first web application designed for real-time draft day decision making:
+While the scientific pipeline computes optimal baselines in peace, fantasy drafts happen in the chaotic reality of high-pressure bidding rooms. The **Live Command Center Spinoff** translates theoretical models into real-time execution:
 
-- **Independent Manager Profiles**: Select your profile or switch between managers with full `localStorage` isolation (personal wishlist, max credit caps, custom notes).
-- **Tactical Blueprints & Stop-Loss Limits**: 5 strategic archetypes (*Trazione Anteriore, Modificatore di Ferro, Centrocampo Dominante, Moneyball, Custom Blueprint*) with per-slot target prices, Stop-Loss ceilings, and free cluster navigation.
-- **Admin-Gated Live Draft (Battitore)**: Password-protected admin mode (`fanta2026` by default or configurable via `ADMIN_PASSWORD` environment variable) to call, bid, and assign players with real-time budget synchronization across all participants.
-- **FantaLab AI Tactical Engine**: Natural language query engine to compare players, audit injury risks, analyze VORP spreads, and explore budget-constrained opportunities.
+- **Independent Manager Isolation**: Select your franchise with client-side `localStorage` isolation (private target wishlists, customized max credit caps, personal notes).
+- **5 Dynamic Tactical Blueprints**: Real-time budget allocation (*Trazione Anteriore, Modificatore di Ferro, Centrocampo Dominante, Moneyball, Custom*) with mathematical **Stop-Loss ceilings** that adapt as players leave the board.
+- **Admin-Gated Live Draft (Battitore)**: Password-protected admin engine (`ADMIN_PASSWORD` or `fanta2026`) allowing the commissioner to call, bid, and assign players with real-time budget synchronization across all participants.
+- **Conversational AI Tactical Copilot**: RAG-powered chat assistant running Google **Gemini 3.5 Flash-Lite** (with zero-cost local quantitative NLP fallback) to run multi-player comparisons, squad diagnostics, and anti-panic budget audits.
+- **Anti-Clutter Live Filters**: 1-click **Solo Svincolati** toggle to instantly hide drafted players, alongside assignment opacity tagging and mobile-first touch controls.
 
-### Running Locally or Self-Hosting
+### Quickstart & Deployment
 ```bash
+# 1. Run locally (Port 5001)
 python3 app.py
-# Server starts at http://localhost:5001
+
+# 2. (Optional) Enable Google Gemini 3.5 Flash-Lite for the AI Copilot
+echo "GEMINI_API_KEY=your_key_here" > .env
 ```
-For private cloud deployment (e.g., Vercel, Railway, Render), standard serverless configuration is provided in [`vercel.json`](vercel.json).
+Standard serverless cloud configuration for private hosting (Vercel, Render, Railway) is available via [`vercel.json`](vercel.json).
 
 ---
 
