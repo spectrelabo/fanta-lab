@@ -103,14 +103,44 @@ def prepare_training_data():
     X = df_train[feature_cols].fillna(0)
     y = df_train["target_pts"]
 
-    return X, y
+    return df_train, X, y
 
 
-def train_quantile_models(X, y):
+def train_quantile_models(df_train, X, y):
     """
-    Trains three Gradient Boosting Regressors for quantiles 0.10, 0.50, and 0.90
-    to learn genuine stochastic prediction intervals (Floor, Expected, Ceiling).
+    Trains three Gradient Boosting Regressors for quantiles 0.10, 0.50, and 0.90.
+    Includes rigorous Out-of-Time (OOT) temporal validation on the held-out final season
+    (2025-26) to measure genuine out-of-sample generalization before final full-dataset fitting.
     """
+    seasons = sorted(df_train["season_target"].unique())
+    last_season = seasons[-1] if seasons else None
+
+    if last_season and len(seasons) > 2:
+        train_mask = df_train["season_target"] != last_season
+        test_mask = df_train["season_target"] == last_season
+
+        X_tr, y_tr = X[train_mask], y[train_mask]
+        X_te, y_te = X[test_mask], y[test_mask]
+
+        oot_preds = {}
+        for alpha, name in [(0.10, "p10"), (0.50, "p50"), (0.90, "p90")]:
+            gbr_val = GradientBoostingRegressor(
+                loss="quantile", alpha=alpha, n_estimators=150,
+                max_depth=4, learning_rate=0.05, random_state=42
+            )
+            gbr_val.fit(X_tr, y_tr)
+            oot_preds[name] = gbr_val.predict(X_te)
+
+        oot_coverage = np.mean((y_te >= oot_preds["p10"]) & (y_te <= oot_preds["p90"])) * 100.0
+        oot_corr = np.corrcoef(y_te, oot_preds["p50"])[0, 1]
+        oot_mae = np.mean(np.abs(y_te - oot_preds["p50"]))
+
+        print(f"\n  [Out-of-Time Temporal Validation: Held-out {last_season} (N={test_mask.sum()})]")
+        print(f"    Empirical 80% CI Coverage: {oot_coverage:.1f}% (Ideal: 80.0%)")
+        print(f"    Out-of-Time P50 Correlation: {oot_corr:.3f}")
+        print(f"    Out-of-Time P50 MAE: {oot_mae:.1f} pts\n")
+
+    # Train final production models on all available historical seasons
     models = {}
     for alpha, name in [(0.10, "p10_floor"), (0.50, "p50_expected"), (0.90, "p90_ceiling")]:
         gbr = GradientBoostingRegressor(
@@ -123,16 +153,7 @@ def train_quantile_models(X, y):
         )
         gbr.fit(X, y)
         models[name] = gbr
-        print(f"  Trained {name} model (quantile={alpha:.2f})")
-
-    # Evaluate training calibration
-    p10 = models["p10_floor"].predict(X)
-    p50 = models["p50_expected"].predict(X)
-    p90 = models["p90_ceiling"].predict(X)
-    coverage = np.mean((y >= p10) & (y <= p90)) * 100.0
-    corr = np.corrcoef(y, p50)[0, 1]
-    mae = np.mean(np.abs(y - p50))
-    print(f"  Model Calibration: Empirical 80% CI Coverage = {coverage:.1f}% | P50 Corr = {corr:.3f} | MAE = {mae:.1f} pts")
+        print(f"  Trained {name} production model (quantile={alpha:.2f})")
 
     return models
 
@@ -147,7 +168,8 @@ def get_series(df: pd.DataFrame, col: str, default_val=0.0) -> pd.Series:
 def predict_active_dataset(models, df_active):
     """
     Applies the trained lagged quantile models to the active roster dataset.
-    Features fed into models match the exact definitions and scales used during lagged training.
+    Uses genuine multi-season weighted MFV (mfv_media_3y) directly from historical tracking,
+    retaining the synthetic formula strictly as a fallback for foreign transfers and rookies.
     """
     df = df_active.copy()
 
@@ -199,8 +221,11 @@ def predict_active_dataset(models, df_active):
             if ass_rate.iloc[i] < 0.05:
                 ass_rate.iloc[i] = round(0.08 + (f_val / 1000.0) * 0.40, 3)
 
-    # Expected prior Fantamedia (MFV)
-    mfv_input = (mv_input + (gol_rate * 3.0) + (ass_rate * 1.0) - (amm_rate * 0.5)).clip(5.0, 9.5)
+    # 4. Genuine Historical Fantamedia (MFV) — use historical mfv_media_3y directly!
+    mfv_hist = pd.to_numeric(df["mfv_media_3y"], errors="coerce") if "mfv_media_3y" in df.columns else pd.Series(np.nan, index=df.index)
+    mfv_synthetic = (mv_input + (gol_rate * 3.0) + (ass_rate * 1.0) - (amm_rate * 0.5)).clip(5.0, 9.5)
+    mfv_input = np.where(mfv_hist.notna() & (mfv_hist >= 4.5), mfv_hist, mfv_synthetic)
+    mfv_input = pd.Series(mfv_input, index=df.index).fillna(mfv_synthetic).clip(5.0, 9.5)
 
     # Adjust availability with medical injury malus
     injury_malus = get_series(df, "malus_infortuni", 0.0)
@@ -240,12 +265,12 @@ def main():
     if not os.path.exists(config.DATASET_FINALE_CSV):
         raise FileNotFoundError(f"Missing {config.DATASET_FINALE_CSV}.")
 
-    X, y = prepare_training_data()
+    df_train, X, y = prepare_training_data()
     if X is None or len(X) == 0:
         print("  Error: No training data available.")
         return
 
-    models = train_quantile_models(X, y)
+    models = train_quantile_models(df_train, X, y)
 
     df_active = pd.read_csv(config.DATASET_FINALE_CSV)
     df_predicted = predict_active_dataset(models, df_active)

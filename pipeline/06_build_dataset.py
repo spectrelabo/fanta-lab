@@ -62,7 +62,8 @@ def merge_storico(df, df_agg):
     matched = sum(1 for v in name_map.values() if v)
     print(f"  Match con storico: {matched} / {len(df)}")
 
-    hist_cols = ["player_name", "n_stagioni", "mv_media_3y", "mv_storica",
+    hist_cols = ["player_name", "n_stagioni", "mv_media_3y", "mfv_media_3y",
+                 "mv_storica", "mfv_storica",
                  "mv_std", "mv_trend", "availability",
                  "gol_per_pg", "ass_per_pg", "amm_per_pg", "rig_per_pg"]
     df_hist = df_agg[hist_cols].rename(columns={"player_name": "storico_name"})

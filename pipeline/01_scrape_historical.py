@@ -155,6 +155,17 @@ def aggregate_players(df_raw):
         mv_storica = float(np.mean(mvs)) if mvs else None
         mv_std     = float(np.std(mvs))  if len(mvs) > 1 else 0.0
 
+        mfvs = grp["mfv"].dropna().tolist()
+        n_f  = min(len(mfvs), 3)
+        if n_f > 0:
+            weights_f    = list(range(n_f, 0, -1))
+            mfv_media_3y = sum(m * w for m, w in zip(mfvs[:n_f], weights_f)) / sum(weights_f)
+        else:
+            mfv_media_3y = None
+
+        mfv_storica = float(np.mean(mfvs)) if mfvs else None
+        mfv_std     = float(np.std(mfvs))  if len(mfvs) > 1 else 0.0
+
         if len(mvs) >= 3:
             x = np.arange(len(mvs) - 1, -1, -1)
             mv_trend = float(np.polyfit(x, mvs, 1)[0])
@@ -183,7 +194,9 @@ def aggregate_players(df_raw):
             "role_mantra":  role_mantra,
             "n_stagioni":   n_stagioni,
             "mv_media_3y":  round(mv_media_3y, 3) if mv_media_3y else None,
+            "mfv_media_3y": round(mfv_media_3y, 3) if mfv_media_3y else None,
             "mv_storica":   round(mv_storica,  3) if mv_storica  else None,
+            "mfv_storica":  round(mfv_storica,  3) if mfv_storica  else None,
             "mv_std":       round(mv_std, 3),
             "mv_trend":     round(mv_trend, 4)    if mv_trend    else None,
             "availability": round(availability, 3) if availability else None,
