@@ -868,6 +868,16 @@ def api_ai_status():
         return jsonify({"error": str(e), "has_llm": False, "active_engine": "Fallback Matematico Offline"})
 
 
+@app.route("/api/ai_test", methods=["GET", "POST"])
+def api_ai_test():
+    """Live diagnostic ping to each configured AI provider with HTTP status codes."""
+    try:
+        from copilot import test_all_providers
+        return jsonify(test_all_providers())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/ai_query", methods=["POST"])
 def api_ai_query():
     """
@@ -4123,24 +4133,35 @@ HTML_TEMPLATE = """
             if (btn) btn.disabled = true;
             if (resBox) {
                 resBox.style.display = 'block';
-                resBox.innerHTML = '<span style="color:var(--text-muted);">Ping live in corso...</span>';
+                resBox.innerHTML = '<span style="color:var(--text-muted);">Ping live ai provider in corso...</span>';
             }
 
             const t0 = performance.now();
             try {
-                const res = await fetch('/api/ai_query', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ prompt: 'Ping test di connettività', profile_id: activeProfileId })
-                });
-                const data = await res.json();
+                const res = await fetch('/api/ai_test');
+                const testData = await res.json();
                 const latency = Math.round(performance.now() - t0);
-                if (resBox) {
-                    resBox.innerHTML = `<span style="color:var(--success); font-weight:700;">✓ Test Riuscito (${latency}ms)</span><br><span style="color:var(--text-muted);">Motore: ${data.engine || 'Regole Tattiche'}</span>`;
+                
+                let details = '';
+                if (testData.groq) {
+                    details += `<div>Groq: <b style="color:${testData.groq.ok ? 'var(--success)' : 'var(--danger)'};">${testData.groq.msg}</b></div>`;
                 }
+                if (testData.gemini) {
+                    details += `<div>Gemini: <b style="color:${testData.gemini.ok ? 'var(--success)' : 'var(--danger)'};">${testData.gemini.msg}</b></div>`;
+                }
+
+                if (resBox) {
+                    resBox.innerHTML = `
+                        <div style="background:#090d16; border:1px solid var(--border); border-radius:6px; padding:8px; text-align:left; font-size:0.75rem;">
+                            <div style="font-weight:800; color:var(--text-main); margin-bottom:4px;">Esito Ping (${latency}ms):</div>
+                            ${details}
+                        </div>
+                    `;
+                }
+                fetchAIStatus();
             } catch(e) {
                 if (resBox) {
-                    resBox.innerHTML = `<span style="color:var(--danger); font-weight:700;">✕ Errore di connessione: ${e.message}</span>`;
+                    resBox.innerHTML = `<span style="color:var(--danger); font-weight:700;">✕ Errore di chiamata: ${e.message}</span>`;
                 }
             }
             if (btn) btn.disabled = false;

@@ -4,10 +4,10 @@ fanta-lab Copilot — Model-Agnostic LLM Tactical Engine.
 Provider priority: Ollama → OpenAI-compatible → Gemini → Heuristic fallback.
 """
 
-from copilot.providers import get_copilot_provider, get_copilot_diagnostics, CopilotProvider
+from copilot.providers import get_copilot_provider, get_copilot_diagnostics, test_all_providers, CopilotProvider
 from copilot.prompts import build_system_prompt, build_user_prompt
 
-__all__ = ["get_copilot_response", "get_copilot_provider", "get_copilot_diagnostics"]
+__all__ = ["get_copilot_response", "get_copilot_provider", "get_copilot_diagnostics", "test_all_providers"]
 
 
 def get_copilot_response(prompt: str, team_context: dict, top_players: list, budget_total: int = 1000, is_personal: bool = False) -> dict | None:

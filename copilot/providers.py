@@ -238,3 +238,52 @@ def get_copilot_diagnostics() -> dict:
             }
         }
     }
+
+
+def test_all_providers() -> dict:
+    """Test ping on each configured provider and return diagnostics with exact HTTP response."""
+    results = {}
+    
+    # 1. Test Groq
+    groq_key = os.environ.get("GROQ_API_KEY")
+    if groq_key:
+        try:
+            resp = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                json={
+                    "model": "llama-3.3-70b-versatile",
+                    "messages": [{"role": "user", "content": "ping"}],
+                    "max_tokens": 5
+                },
+                headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
+                timeout=5
+            )
+            if resp.status_code == 200:
+                results["groq"] = {"ok": True, "status_code": 200, "msg": "Connessione riuscita (200 OK)"}
+            else:
+                results["groq"] = {"ok": False, "status_code": resp.status_code, "msg": f"Errore {resp.status_code}: {resp.text[:150]}"}
+        except Exception as e:
+            results["groq"] = {"ok": False, "status_code": None, "msg": f"Eccezione: {str(e)}"}
+    else:
+        results["groq"] = {"ok": False, "status_code": None, "msg": "GROQ_API_KEY non presente"}
+
+    # 2. Test Gemini
+    gemini_key = os.environ.get("GEMINI_API_KEY")
+    if gemini_key:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key={gemini_key}"
+            resp = requests.post(
+                url,
+                json={"contents": [{"role": "user", "parts": [{"text": "ping"}]}]},
+                timeout=5
+            )
+            if resp.status_code == 200:
+                results["gemini"] = {"ok": True, "status_code": 200, "msg": "Connessione riuscita (200 OK)"}
+            else:
+                results["gemini"] = {"ok": False, "status_code": resp.status_code, "msg": f"Errore {resp.status_code}: {resp.text[:150]}"}
+        except Exception as e:
+            results["gemini"] = {"ok": False, "status_code": None, "msg": f"Eccezione: {str(e)}"}
+    else:
+        results["gemini"] = {"ok": False, "status_code": None, "msg": "GEMINI_API_KEY non presente"}
+
+    return results
