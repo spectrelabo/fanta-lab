@@ -85,46 +85,92 @@ class OpenAIProvider(CopilotProvider):
 
 
 class GeminiProvider(CopilotProvider):
-    """Google Gemini native REST API."""
+    """Google Gemini native REST API with auto model fallback."""
+    CANDIDATE_MODELS = [
+        "gemini-1.5-flash",
+        "gemini-2.0-flash",
+        "gemini-1.5-pro",
+        "gemini-2.5-flash"
+    ]
 
-    def __init__(self, api_key: str, model: str = "gemini-2.0-flash-lite"):
+    def __init__(self, api_key: str, model: str | None = None):
         self.api_key = api_key
-        self.model = model
-        self.engine_name = model
+        self.model = model or os.environ.get("GEMINI_MODEL") or "gemini-1.5-flash"
+        self.engine_name = f"Gemini ({self.model})"
 
     def query(self, system_prompt: str, user_prompt: str, temperature: float = 0.35, max_tokens: int = 650) -> str | None:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent?key={self.api_key}"
+        models_to_try = [self.model] + [m for m in self.CANDIDATE_MODELS if m != self.model]
 
-        payload = {
-            "contents": [{
-                "role": "user",
-                "parts": [{"text": f"System Context:\n{system_prompt}\n\n{user_prompt}"}]
-            }],
-            "generationConfig": {
-                "temperature": temperature,
-                "maxOutputTokens": max_tokens
+        for candidate in models_to_try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{candidate}:generateContent?key={self.api_key}"
+            payload = {
+                "contents": [{
+                    "role": "user",
+                    "parts": [{"text": f"System Context:\n{system_prompt}\n\n{user_prompt}"}]
+                }],
+                "generationConfig": {
+                    "temperature": temperature,
+                    "maxOutputTokens": max_tokens
+                }
             }
-        }
-
-        resp = requests.post(url, json=payload, timeout=10)
-        if resp.status_code == 200:
-            return (resp.json()
-                    .get("candidates", [{}])[0]
-                    .get("content", {})
-                    .get("parts", [{}])[0]
-                    .get("text", "").strip())
+            try:
+                resp = requests.post(url, json=payload, timeout=10)
+                if resp.status_code == 200:
+                    self.engine_name = f"Gemini ({candidate})"
+                    return (resp.json()
+                            .get("candidates", [{}])[0]
+                            .get("content", {})
+                            .get("parts", [{}])[0]
+                            .get("text", "").strip())
+            except Exception:
+                continue
         return None
 
 
 class GroqProvider(OpenAIProvider):
-    """Zero-cost cloud LLM inference via Groq Free Tier (Llama 3.3 / Llama 3.1 / Qwen)."""
-    def __init__(self, api_key: str, model: str = "llama-3.3-70b-versatile"):
+    """Zero-cost cloud LLM inference via Groq Free Tier with auto model fallback."""
+    CANDIDATE_MODELS = [
+        "llama-3.1-8b-instant",
+        "llama-3.1-70b-versatile",
+        "llama-3.3-70b-versatile",
+        "mixtral-8x7b-32768"
+    ]
+
+    def __init__(self, api_key: str, model: str | None = None):
+        target_model = model or os.environ.get("GROQ_MODEL") or "llama-3.1-8b-instant"
         super().__init__(
             base_url="https://api.groq.com/openai/v1",
             api_key=api_key,
-            model=model
+            model=target_model
         )
-        self.engine_name = f"Groq ({model})"
+        self.engine_name = f"Groq ({target_model})"
+
+    def query(self, system_prompt: str, user_prompt: str, temperature: float = 0.35, max_tokens: int = 650) -> str | None:
+        models_to_try = [self.model] + [m for m in self.CANDIDATE_MODELS if m != self.model]
+        endpoint = f"{self.base_url}/chat/completions"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}"
+        }
+
+        for candidate in models_to_try:
+            payload = {
+                "model": candidate,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                "temperature": temperature,
+                "max_tokens": max_tokens
+            }
+            try:
+                resp = requests.post(endpoint, json=payload, headers=headers, timeout=10)
+                if resp.status_code == 200:
+                    self.engine_name = f"Groq ({candidate})"
+                    return resp.json().get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+            except Exception:
+                continue
+        return None
 
 
 class CascadeProvider(CopilotProvider):
@@ -160,13 +206,13 @@ def get_copilot_provider() -> CopilotProvider | None:
 
     # 1. Groq Free Tier (Ultra-fast, 0 token cost, no credit card required)
     groq_key = os.environ.get("GROQ_API_KEY")
-    groq_model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+    groq_model = os.environ.get("GROQ_MODEL") or "llama-3.1-8b-instant"
     if groq_key:
         available_providers.append(GroqProvider(api_key=groq_key, model=groq_model))
 
     # 2. Google Gemini Free Tier
     gemini_key = os.environ.get("GEMINI_API_KEY")
-    gemini_model = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash-lite")
+    gemini_model = os.environ.get("GEMINI_MODEL") or "gemini-1.5-flash"
     if gemini_key:
         available_providers.append(GeminiProvider(api_key=gemini_key, model=gemini_model))
 
@@ -248,20 +294,12 @@ def test_all_providers() -> dict:
     groq_key = os.environ.get("GROQ_API_KEY")
     if groq_key:
         try:
-            resp = requests.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                json={
-                    "model": "llama-3.3-70b-versatile",
-                    "messages": [{"role": "user", "content": "ping"}],
-                    "max_tokens": 5
-                },
-                headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
-                timeout=5
-            )
-            if resp.status_code == 200:
-                results["groq"] = {"ok": True, "status_code": 200, "msg": "Connessione riuscita (200 OK)"}
+            gp = GroqProvider(api_key=groq_key)
+            reply = gp.query("System: You are a fast ping responder.", "Reply PONG in one word.", max_tokens=10)
+            if reply:
+                results["groq"] = {"ok": True, "status_code": 200, "msg": f"Connessione riuscita ({gp.engine_name})"}
             else:
-                results["groq"] = {"ok": False, "status_code": resp.status_code, "msg": f"Errore {resp.status_code}: {resp.text[:150]}"}
+                results["groq"] = {"ok": False, "status_code": 404, "msg": "Nessun modello Groq disponibile con questa chiave"}
         except Exception as e:
             results["groq"] = {"ok": False, "status_code": None, "msg": f"Eccezione: {str(e)}"}
     else:
@@ -271,16 +309,12 @@ def test_all_providers() -> dict:
     gemini_key = os.environ.get("GEMINI_API_KEY")
     if gemini_key:
         try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key={gemini_key}"
-            resp = requests.post(
-                url,
-                json={"contents": [{"role": "user", "parts": [{"text": "ping"}]}]},
-                timeout=5
-            )
-            if resp.status_code == 200:
-                results["gemini"] = {"ok": True, "status_code": 200, "msg": "Connessione riuscita (200 OK)"}
+            gem = GeminiProvider(api_key=gemini_key)
+            reply = gem.query("System: You are a fast ping responder.", "Reply PONG in one word.", max_tokens=10)
+            if reply:
+                results["gemini"] = {"ok": True, "status_code": 200, "msg": f"Connessione riuscita ({gem.engine_name})"}
             else:
-                results["gemini"] = {"ok": False, "status_code": resp.status_code, "msg": f"Errore {resp.status_code}: {resp.text[:150]}"}
+                results["gemini"] = {"ok": False, "status_code": 404, "msg": "Nessun modello Gemini disponibile con questa chiave"}
         except Exception as e:
             results["gemini"] = {"ok": False, "status_code": None, "msg": f"Eccezione: {str(e)}"}
     else:
