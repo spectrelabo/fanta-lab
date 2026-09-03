@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-fanta-lab — Modern Quantitative Auction & Live Draft Platform for Fantacalcio Serie A
-Clean, professional interface with local profile isolation, custom targets, FantaLab AI query assistant, and Admin-gated Live Draft.
+fanta-lab — Spectre - FantaMoneyball: Modern Quantitative Auction & Live Draft Platform for Fantacalcio Serie A
+Clean, professional interface with local profile isolation, custom targets, FantaMoneyball AI query assistant, and Admin-gated Live Draft.
 """
 
 import os
@@ -97,13 +97,13 @@ TOTAL_ROSTER_SIZE = sum(DEFAULT_ROSTER_SLOTS.values())
 # ──────────────────────────────────────────────────────────────────────
 # BOT IDENTITY & PERSONA
 # ──────────────────────────────────────────────────────────────────────
-BOT_NAME = os.environ.get("BOT_NAME", "FantaLab AI")
+BOT_NAME = os.environ.get("BOT_NAME", "FantaMoneyball AI")
 BOT_SUBTITLE = os.environ.get("BOT_SUBTITLE", "Assistente Tattico Quantitativo")
 BOT_AVATAR_TEXT = os.environ.get("BOT_AVATAR_TEXT", "AI")
 BOT_BADGE = os.environ.get("BOT_BADGE", "PRO DECISION")
 BOT_GREETING = os.environ.get(
     "BOT_GREETING",
-    "Ciao! Sono l'assistente quantitativo di **FantaLab**. Chiedimi confronti (es. *Malen vs Lautaro*), "
+    "Ciao! Sono l'assistente quantitativo di **Spectre - FantaMoneyball**. Chiedimi confronti (es. *Malen vs Lautaro*), "
     "analisi di reparto o raccomandazioni basate su VORP e proiezioni ML."
 )
 BOT_AVATAR_IMAGE = os.environ.get("BOT_AVATAR_URL", "")
@@ -860,7 +860,7 @@ def api_undo():
 @app.route("/api/ai_query", methods=["POST"])
 def api_ai_query():
     """
-    FantaLab AI Tactical Engine
+    FantaMoneyball AI Tactical Engine
     Priorità: Ollama locale -> OpenAI-compatible -> Google Gemini -> Local Quantitative Reasoner.
     """
     data = request.json or {}
@@ -1114,7 +1114,7 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>fanta-lab — Centro Decisionale Asta & Strategia</title>
+    <title>Spectre - FantaMoneyball — Centro Decisionale Asta & Strategia</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -2407,7 +2407,7 @@ HTML_TEMPLATE = """
             <div id="targetsListContainer"></div>
         </div>
 
-        <!-- TAB 3: CHIEDI A FANTALAB AI CHATBOT -->
+        <!-- TAB 3: CHIEDI AL TACTICAL CHATBOT -->
         <div id="tab-ai" class="tab-content">
             <div class="card" style="border-top:3px solid var(--primary); padding:16px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid var(--border); padding-bottom:10px;">
@@ -3546,7 +3546,7 @@ HTML_TEMPLATE = """
         }
 
         /* ─────────────────────────────────────────────────────────────
-           FANTALAB AI CONVERSATIONAL CHATBOT ENGINE
+           TACTICAL AI CONVERSATIONAL CHATBOT ENGINE
         ───────────────────────────────────────────────────────────── */
         const AI_AVATAR_HTML = `<div class="chat-msg-avatar" style="width:32px; height:32px; border-radius:50%; background:linear-gradient(135deg, #0284c7, #4f46e5); display:flex; align-items:center; justify-content:center; flex-shrink:0; border:1.5px solid var(--primary);"><svg style="width:16px; height:16px; stroke:#ffffff; fill:none; stroke-width:2;" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path></svg></div>`;
 
@@ -4601,7 +4601,7 @@ def main():
         local_ip = "127.0.0.1"
 
     print("\n" + "=" * 70)
-    print("  fanta-lab — Centro Decisionale Asta & Strategia (PRO)")
+    print("  Spectre - FantaMoneyball — Centro Decisionale Asta & Strategia (PRO)")
     print("  Regole: 1.000 Crediti | Struttura Roster 4-9-9-7 (29 Giocatori)")
     print("=" * 70)
     print(f"\n  Accesso Desktop: http://localhost:5050")

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-fanta-lab — Interactive Terminal Demo
+Spectre - FantaMoneyball — Interactive Terminal Demo
 
 Zero-configuration demo showcasing:
   1. Case Study: Media Hype Trap vs Statistical Value Gem
@@ -34,7 +34,7 @@ def load_demo_data():
 
 def banner():
     print("\n" + "=" * 75)
-    print("  fanta-lab — Quantitative Fantasy Football Analytics Demo")
+    print("  Spectre - FantaMoneyball — Quantitative Fantasy Football Analytics Demo")
     print("=" * 75)
     print("  A cold, data-driven framework to exploit auction market inefficiencies.\n")
 

@@ -25,7 +25,7 @@ def build_system_prompt(team_context: dict, budget_total: int = 1000, is_persona
     elif is_personal:
         intro = "Sei un assistente tattico esperto e confidenziale per l'asta del Fantacalcio Serie A.\n\n"
     else:
-        intro = "Sei FantaLab AI, il consulente quantitativo senior per aste di Fantacalcio Serie A (Classic/Mantra).\n\n"
+        intro = "Sei FantaMoneyball AI, il consulente quantitativo senior per aste di Fantacalcio Serie A (Classic/Mantra).\n\n"
 
     return (
         intro +

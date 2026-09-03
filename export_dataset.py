@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-fanta-lab — Export & Calibration Dataset CLI
+Spectre - FantaMoneyball — Export & Calibration Dataset CLI
 Consente di generare o esportare il dataset finale tarato su scala 500 crediti o 1000 crediti.
 
 Uso:

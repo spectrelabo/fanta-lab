@@ -1,6 +1,6 @@
-# Composite Scoring Methodology — fanta-lab
+# Composite Scoring Methodology — Spectre - FantaMoneyball
 
-The **Composite Score** in `fanta-lab` is a normalized synthetic metric in the range $[0.00, 1.00]$ designed to quantify a player's auction value by balancing historical consistency, projected productivity, physical reliability, and market efficiency.
+The **Composite Score** in `Spectre - FantaMoneyball` is a normalized synthetic metric in the range $[0.00, 1.00]$ designed to quantify a player's auction value by balancing historical consistency, projected productivity, physical reliability, and market efficiency.
 
 ---
 

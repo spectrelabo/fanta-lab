@@ -77,7 +77,7 @@ Where $\delta_{role}$ represents the maximum allowed emotional tolerance (typica
 
 ---
 
-## 4. FantaLab AI: Model-Agnostic LLM & Tactical Copilot
+## 4. FantaMoneyball AI: Model-Agnostic LLM & Tactical Copilot
 
 The built-in assistant is designed to prevent emotional hallucinations during bidding wars. It is completely **model-agnostic**, allowing you to plug in local offline models (Ollama, vLLM, LMStudio) or cloud APIs (OpenAI, DeepSeek, Groq, Gemini) via standard environment variables:
 

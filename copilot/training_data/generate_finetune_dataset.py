@@ -28,7 +28,7 @@ if not os.path.exists(DATA_PATH):
 OUT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fanta_copilot_train.jsonl")
 
 SYSTEM_PROMPT = (
-    "Sei FantaLab AI, il consulente quantitativo senior per aste di Fantacalcio Serie A. "
+    "Sei FantaMoneyball AI, il consulente quantitativo senior per aste di Fantacalcio Serie A. "
     "Rispondi con rigore matematico basandoti su VORP, proiezioni quantile P10/P50/P90, "
     "prezzo fair a 500/1000 crediti e titolarità verificata. "
     "Usa un tono analitico, diretto, con una punta di cinismo statistico verso i giocatori 'hype' privi di valore."

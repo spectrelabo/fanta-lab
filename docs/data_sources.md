@@ -1,6 +1,6 @@
-# Data Sources and Ingestion Strategies — fanta-lab
+# Data Sources and Ingestion Strategies — Spectre - FantaMoneyball
 
-`fanta-lab` combines four disparate data sources to construct a comprehensive quantitative profile for every player in the league.
+`Spectre - FantaMoneyball` combines four disparate data sources to construct a comprehensive quantitative profile for every player in the league.
 
 ---
 
@@ -17,7 +17,7 @@
 
 ## Entity Resolution & Fuzzy Name Matching
 
-Different platforms utilize contrasting naming conventions (e.g., diacritics, abbreviations, first-name initials, or nicknames). `fanta-lab` employs a 4-tier normalization pipeline:
+Different platforms utilize contrasting naming conventions (e.g., diacritics, abbreviations, first-name initials, or nicknames). `Spectre - FantaMoneyball` employs a 4-tier normalization pipeline:
 
 1. **Unicode Decomposition (NFD)**: Strips all diacritics and accented characters (e.g., `Kessié` -> `kessie`, `Laurienté` -> `lauriente`).
 2. **Regex Initialization Stripping**: Eliminates trailing initials (e.g., `Martinez L.` -> `martinez`, `Paz N.` -> `paz`).

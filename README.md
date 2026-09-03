@@ -1,4 +1,4 @@
-# fanta-lab — Quantitative Fantasy Football & League Analytics Framework
+# Spectre - FantaMoneyball — Quantitative Fantasy Football & League Analytics Framework
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -49,7 +49,7 @@ Every pre-season, millions of fantasy managers sit around the draft table convin
 - A defender is bought at a premium price, only for the manager to realize by October that the player spends six months a year in clinical rehabilitation for chronic muscular lesions.
 - An impulsive bidding war is fought over an "attacking midfielder" whose Expected Goals per 90 minutes is lower than that of the opposing goalkeeper.
 
-`fanta-lab` was built to replace emotional hallucinations with cold, reproducible, data-driven analytics. The framework does not care about names, transfer market hype, or media narratives. Its singular purpose is to quantify the **risk-adjusted expected value** of every active player and solve the **optimal roster knapsack problem**.
+`FantaMoneyball` was built to replace emotional hallucinations with cold, reproducible, data-driven analytics. The framework does not care about names, transfer market hype, or media narratives. Its singular purpose is to quantify the **risk-adjusted expected value** of every active player and solve the **optimal roster knapsack problem**.
 
 ---
 
@@ -329,7 +329,7 @@ This project stands on the shoulders of the open-source football analytics commu
 
 ## Support the Project
 
-If `fanta-lab` prevented an emotional 2:00 AM panic buy, saved your budget, or gave you an algorithmic edge in your fantasy auction, consider buying a coffee to support ongoing open-source maintenance:
+If `Spectre - FantaMoneyball` prevented an emotional 2:00 AM panic buy, saved your budget, or gave you an algorithmic edge in your fantasy auction, consider buying a coffee to support ongoing open-source maintenance:
 
 [![Buy Me A Coffee](https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png)](https://buymeacoffee.com/blueskies360)
 

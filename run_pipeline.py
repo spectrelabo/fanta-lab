@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-fanta-lab — Unified CLI Pipeline Entry Point
+Spectre - FantaMoneyball — Unified CLI Pipeline Entry Point
 
 Executes the full analytics, machine learning, and auction optimization pipeline
 or individual standalone stages.
@@ -58,7 +58,7 @@ def run_step(step_num):
 
 def run_all(from_step=1):
     print("=" * 70)
-    print("  fanta-lab — Quantitative Fantasy Football Analytics Pipeline")
+    print("  Spectre - FantaMoneyball — Quantitative Fantasy Football Analytics Pipeline")
     print("=" * 70)
 
     # Execution sequence
@@ -85,7 +85,7 @@ def run_all(from_step=1):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="fanta-lab — Quantitative Fantasy Football Analytics Pipeline",
+        description="Spectre - FantaMoneyball — Quantitative Fantasy Football Analytics Pipeline",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Available Pipeline Stages:

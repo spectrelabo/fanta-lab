@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-fanta-lab — Default Configuration for Community Open-Source Release.
+Spectre - FantaMoneyball — Default Configuration for Community Open-Source Release.
 
 These are the baseline defaults used when no personal configuration override
 is present. They represent a standard 10-team, 500-credit, 25-slot league.

@@ -1,4 +1,4 @@
-# 🧠 Fine-Tuning FantaLab Copilot (Ollama + Qwen 2.5 3B)
+# 🧠 Fine-Tuning FantaMoneyball Copilot (Ollama + Qwen 2.5 3B)
 
 Guida pratica per creare ed eseguire un modello locale ultra-rapido specializzato su VORP, aste matematiche e Fantacalcio Serie A.
 
@@ -12,8 +12,8 @@ Se hai già **Ollama** installato, puoi creare immediatamente l'agente custom ot
 # 1. Scarica il base model veloce (circa 1.9 GB)
 ollama pull qwen2.5:3b
 
-# 2. Compila il modello custom FantaLab usando il nostro Modelfile
-cd fanta-lab
+# 2. Compila il modello custom FantaMoneyball usando il nostro Modelfile
+cd Spectre - FantaMoneyball
 ollama create fanta-copilot -f copilot/Modelfile
 
 # 3. Testa il modello in terminale

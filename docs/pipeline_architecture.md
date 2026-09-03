@@ -1,6 +1,6 @@
-# Pipeline Architecture — fanta-lab
+# Pipeline Architecture — Spectre - FantaMoneyball
 
-`fanta-lab` is a modular, multi-source framework for extracting, aggregating, and modeling football player performance data to optimize pre-season fantasy auction strategies.
+`Spectre - FantaMoneyball` is a modular, multi-source framework for extracting, aggregating, and modeling football player performance data to optimize pre-season fantasy auction strategies.
 
 ---
 

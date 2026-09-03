@@ -1,5 +1,5 @@
 """
-fanta-lab Copilot — LLM Provider Implementations.
+Spectre - FantaMoneyball Copilot — LLM Provider Implementations.
 
 Provider priority (first available wins):
 1. OllamaProvider   — LLM_BASE_URL set (default http://localhost:11434/v1)

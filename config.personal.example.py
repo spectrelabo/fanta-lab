@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-fanta-lab — Personal Configuration Override (TEMPLATE)
+Spectre - FantaMoneyball — Personal Configuration Override (TEMPLATE)
 
 Copy this file to `config.personal.py` and customize for your league.
 config.personal.py is in .gitignore and will NEVER be committed to the public repo.

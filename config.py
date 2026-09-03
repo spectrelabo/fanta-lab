@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-fanta-lab — Configurazione centralizzata
+Spectre - FantaMoneyball — Configurazione centralizzata
 Tutti i parametri, costanti e mapping usati dalla pipeline.
 """
 

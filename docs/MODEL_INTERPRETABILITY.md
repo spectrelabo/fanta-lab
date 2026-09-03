@@ -1,8 +1,8 @@
-# Model Interpretability & Quantitative Framework — fanta-lab
+# Model Interpretability & Quantitative Framework — Spectre - FantaMoneyball
 
 ## Executive Summary
 
-`fanta-lab` is an algorithmic decision engine and live draft software designed for modern Serie A fantasy football (*Fantacalcio Classic & Mantra*). It combines empirical feature engineering, probabilistic point projections, economic auction theory (Value Over Replacement Player), non-linear pricing curves, and real-time tactical optimization.
+`Spectre - FantaMoneyball` is an algorithmic decision engine and live draft software designed for modern Serie A fantasy football (*Fantacalcio Classic & Mantra*). It combines empirical feature engineering, probabilistic point projections, economic auction theory (Value Over Replacement Player), non-linear pricing curves, and real-time tactical optimization.
 
 This document details the mathematical formulations, feature pipelines, heuristic weights, and decision rules governing every output of the model.
 
@@ -10,7 +10,7 @@ This document details the mathematical formulations, feature pipelines, heuristi
 
 ## 1. Probabilistic Points Forecasting ($P_{10}, P_{50}, P_{90}$)
 
-Rather than predicting a single deterministic score, `fanta-lab` models fantasy point distributions over 38 matchdays through a probabilistic quantile framework:
+Rather than predicting a single deterministic score, `Spectre - FantaMoneyball` models fantasy point distributions over 38 matchdays through a probabilistic quantile framework:
 
 - **$P_{50}$ (Expected Median Yield)**: The most likely total point return under standard minutes.
 - **$P_{10}$ (Statistical Floor)**: The worst-case output scenario (e.g., recurring minor injuries, rotation loss, disciplinary cards).
@@ -33,7 +33,7 @@ Expected Point Spread:
 
 ## 2. Value Over Replacement Player (VORP)
 
-Raw fantasy points are economically distorted across roles (e.g., 200 points from a Defender is exponentially scarcer than 200 points from an Attacker). `fanta-lab` standardizes productivity using **VORP**:
+Raw fantasy points are economically distorted across roles (e.g., 200 points from a Defender is exponentially scarcer than 200 points from an Attacker). `Spectre - FantaMoneyball` standardizes productivity using **VORP**:
 
 $$\text{VORP}_i = \max\left(0, P_{50, i} - \text{Baseline Points}_{\text{Role}(i)}\right)$$
 
@@ -77,7 +77,7 @@ A positive Surplus Value indicates an undervalued target (Moneyball target); a n
 
 ## 4. Tactical Blueprint Optimization
 
-`fanta-lab` includes 5 strategic resource allocation archetypes:
+`Spectre - FantaMoneyball` includes 5 strategic resource allocation archetypes:
 
 ```mermaid
 graph TD
@@ -110,7 +110,7 @@ $$\text{Adjusted Score} = \text{Score}_{\text{base}} \times \left(1.0 - 0.15 \ti
 
 ---
 
-## 6. Real-Time NLP Tactical Engine (FantaLab AI)
+## 6. Real-Time NLP Tactical Engine (FantaMoneyball AI)
 
 The built-in query system translates manager questions into data filters:
 

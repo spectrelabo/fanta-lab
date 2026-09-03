@@ -26,7 +26,7 @@ def get_copilot_response(prompt: str, team_context: dict, top_players: list, bud
         reply = provider.query(system_prompt, user_prompt)
         if reply:
             engine_name = getattr(provider, "last_successful_engine", None) or provider.engine_name
-            bot_title = "Risposta Tattica Personalizzata" if is_personal else "Risposta Tattica FantaLab AI"
+            bot_title = "Risposta Tattica Personalizzata" if is_personal else "Risposta Tattica FantaMoneyball AI"
             return {
                 "type": "llm_chat",
                 "title": bot_title,
