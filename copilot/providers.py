@@ -292,12 +292,13 @@ def test_all_providers() -> dict:
     groq_key = os.environ.get("GROQ_API_KEY")
     if groq_key:
         try:
-            gp = GroqProvider(api_key=groq_key)
-            reply = gp.query("System: You are a fast ping responder.", "Reply PONG in one word.", max_tokens=10)
-            if reply:
-                results["groq"] = {"ok": True, "status_code": 200, "msg": f"Connessione riuscita ({gp.engine_name})"}
-            else:
-                results["groq"] = {"ok": False, "status_code": 404, "msg": "Nessun modello Groq disponibile con questa chiave"}
+            resp = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                json={"model": "openai/gpt-oss-120b", "messages": [{"role": "user", "content": "ping"}], "max_tokens": 5},
+                headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
+                timeout=5
+            )
+            results["groq"] = {"ok": resp.status_code == 200, "status_code": resp.status_code, "msg": f"{resp.status_code}: {resp.text[:200]}"}
         except Exception as e:
             results["groq"] = {"ok": False, "status_code": None, "msg": f"Eccezione: {str(e)}"}
     else:
@@ -307,12 +308,13 @@ def test_all_providers() -> dict:
     gemini_key = os.environ.get("GEMINI_API_KEY")
     if gemini_key:
         try:
-            gem = GeminiProvider(api_key=gemini_key)
-            reply = gem.query("System: You are a fast ping responder.", "Reply PONG in one word.", max_tokens=10)
-            if reply:
-                results["gemini"] = {"ok": True, "status_code": 200, "msg": f"Connessione riuscita ({gem.engine_name})"}
-            else:
-                results["gemini"] = {"ok": False, "status_code": 404, "msg": "Nessun modello Gemini disponibile con questa chiave"}
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_key}"
+            resp = requests.post(
+                url,
+                json={"contents": [{"role": "user", "parts": [{"text": "ping"}]}]},
+                timeout=5
+            )
+            results["gemini"] = {"ok": resp.status_code == 200, "status_code": resp.status_code, "msg": f"{resp.status_code}: {resp.text[:200]}"}
         except Exception as e:
             results["gemini"] = {"ok": False, "status_code": None, "msg": f"Eccezione: {str(e)}"}
     else:
