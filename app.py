@@ -3886,8 +3886,9 @@ HTML_TEMPLATE = """
             if (!text) return '';
             let raw = escapeHTML(text);
 
+            const nl = String.fromCharCode(10);
             // 1. Process Markdown Tables (| col1 | col2 |)
-            const lines = raw.split('\n');
+            const lines = raw.split(nl);
             let inTable = false;
             let tableHtml = '';
             let processedLines = [];
@@ -3926,7 +3927,7 @@ HTML_TEMPLATE = """
                 processedLines.push(tableHtml);
             }
 
-            let formatted = processedLines.join('\n');
+            let formatted = processedLines.join(nl);
             // Headers
             formatted = formatted.replace(/^### (.*$)/gim, '<h4 style="color:var(--primary); font-size:0.95rem; margin:10px 0 4px 0;">$1</h4>');
             formatted = formatted.replace(/^## (.*$)/gim, '<h3 style="color:var(--text-main); font-size:1.02rem; margin:12px 0 6px 0;">$1</h3>');
@@ -3936,8 +3937,8 @@ HTML_TEMPLATE = """
             // Bullet Points
             formatted = formatted.replace(new RegExp('^\\s*-\\s+(.*$)', 'gim'), '<div style="display:flex; gap:6px; margin-bottom:3px;"><span style="color:var(--primary);">&bull;</span><span>$1</span></div>');
             // Spacing
-            formatted = formatted.replace(/\n\n+/g, '<div style="height:8px;"></div>');
-            formatted = formatted.replace(/\n/g, '<br>');
+            formatted = formatted.split(nl + nl).join('<div style="height:8px;"></div>');
+            formatted = formatted.split(nl).join('<br>');
             return formatted;
         }
 
