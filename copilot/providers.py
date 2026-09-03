@@ -87,14 +87,14 @@ class OpenAIProvider(CopilotProvider):
 class GeminiProvider(CopilotProvider):
     """Google Gemini native REST API with verified active models."""
     CANDIDATE_MODELS = [
-        "gemini-2.5-flash",
+        "gemini-3.6-flash",
         "gemini-flash-latest",
         "gemini-2.5-pro"
     ]
 
     def __init__(self, api_key: str, model: str | None = None):
         self.api_key = api_key
-        self.model = model or os.environ.get("GEMINI_MODEL") or "gemini-2.5-flash"
+        self.model = model or os.environ.get("GEMINI_MODEL") or "gemini-3.6-flash"
         self.engine_name = f"Gemini ({self.model})"
 
     def query(self, system_prompt: str, user_prompt: str, temperature: float = 0.35, max_tokens: int = 650) -> str | None:
@@ -210,7 +210,7 @@ def get_copilot_provider() -> CopilotProvider | None:
 
     # 2. Google Gemini Free Tier
     gemini_key = os.environ.get("GEMINI_API_KEY")
-    gemini_model = os.environ.get("GEMINI_MODEL") or "gemini-2.5-flash"
+    gemini_model = os.environ.get("GEMINI_MODEL") or "gemini-3.6-flash"
     if gemini_key:
         available_providers.append(GeminiProvider(api_key=gemini_key, model=gemini_model))
 
@@ -308,7 +308,7 @@ def test_all_providers() -> dict:
     gemini_key = os.environ.get("GEMINI_API_KEY")
     if gemini_key:
         try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_key}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={gemini_key}"
             resp = requests.post(
                 url,
                 json={"contents": [{"role": "user", "parts": [{"text": "ping"}]}]},
