@@ -12,12 +12,26 @@ import os
 import json
 import requests
 
+# Try loading .env if present locally
+if os.path.exists(".env"):
+    try:
+        with open(".env", "r") as _f:
+            for _line in _f:
+                _line = _line.strip()
+                if _line and not _line.startswith("#") and "=" in _line:
+                    _k, _v = _line.split("=", 1)
+                    _k, _v = _k.strip(), _v.strip()
+                    if _k and _k not in os.environ:
+                        os.environ[_k] = _v
+    except Exception:
+        pass
+
 
 class CopilotProvider:
     """Base interface for LLM providers."""
     engine_name: str = "unknown"
 
-    def query(self, system_prompt: str, user_prompt: str, temperature: float = 0.35, max_tokens: int = 650) -> str | None:
+    def query(self, system_prompt: str, user_prompt: str, temperature: float = 0.35, max_tokens: int = 800) -> str | None:
         raise NotImplementedError
 
 
@@ -97,7 +111,7 @@ class GeminiProvider(CopilotProvider):
         self.model = model or os.environ.get("GEMINI_MODEL") or "gemini-3.6-flash"
         self.engine_name = f"Gemini ({self.model})"
 
-    def query(self, system_prompt: str, user_prompt: str, temperature: float = 0.35, max_tokens: int = 650) -> str | None:
+    def query(self, system_prompt: str, user_prompt: str, temperature: float = 0.35, max_tokens: int = 2048) -> str | None:
         models_to_try = [self.model] + [m for m in self.CANDIDATE_MODELS if m != self.model]
 
         for candidate in models_to_try:
@@ -113,7 +127,7 @@ class GeminiProvider(CopilotProvider):
                 }
             }
             try:
-                resp = requests.post(url, json=payload, timeout=10)
+                resp = requests.post(url, json=payload, timeout=12)
                 if resp.status_code == 200:
                     self.engine_name = f"Gemini ({candidate})"
                     return (resp.json()

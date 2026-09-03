@@ -134,6 +134,14 @@ IS_PERSONAL = bool(BOT_AVATAR_IMAGE or os.path.exists(_personal_config_path) or 
 app = Flask(__name__)
 
 
+@app.after_request
+def add_cache_headers(response):
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
+
 # ──────────────────────────────────────────────────────────────────────
 # TACTICAL STRATEGY BLUEPRINTS (SCALA SLOT PRESETS)
 # ──────────────────────────────────────────────────────────────────────
@@ -906,7 +914,43 @@ def api_ai_query():
     try:
         from copilot import get_copilot_response
         unassigned_df = df[~df['player'].isin(assigned.keys())]
-        top_sample = unassigned_df.head(40)[['player', 'role', 'team', 'predicted_pts_p50', 'prezzo_fair_1000', 'vorp_points', 'is_starter_2627']].to_dict(orient='records')
+
+        # Dynamic contextual sampling based on user query
+        sample_df = unassigned_df.copy()
+        
+        # 1. Role filtering if requested
+        role_map_kw = {'portier': 'P', 'difensor': 'D', 'centrocampist': 'C', 'attaccant': 'A'}
+        for r_key, r_code in role_map_kw.items():
+            if r_key in prompt_lower:
+                sample_df = sample_df[sample_df['role'] == r_code]
+                break
+
+        # 2. Team filtering if requested
+        team_kw = {
+            'como': 'COM', 'milan': 'MIL', 'juve': 'JUV', 'juventus': 'JUV',
+            'inter': 'INT', 'roma': 'ROM', 'lazio': 'LAZ', 'atalanta': 'ATA',
+            'napoli': 'NAP', 'bologna': 'BOL', 'fiorentina': 'FIO', 'torino': 'TOR',
+            'genoa': 'GEN', 'lecce': 'LEC', 'udinese': 'UDI', 'parma': 'PAR',
+            'sassuolo': 'SAS', 'monza': 'MON', 'venezia': 'VEN', 'cagliari': 'CAG'
+        }
+        for t_k, t_c in team_kw.items():
+            if re.search(rf'\b{re.escape(t_k)}\b', prompt_lower):
+                sample_df = sample_df[sample_df['team'] == t_c]
+                break
+
+        # 3. Low-cost / "a 1" / budget filtering
+        is_low_cost = any(term in prompt_lower for term in ["a 1", "1 credito", "1 cr", "low cost", "scommess", "economici", "risparmi", "prezzo basso", "meno di 5", "sotto i 5"])
+        if is_low_cost:
+            sample_df = sample_df[sample_df['prezzo_fair_1000'] <= 10].sort_values(
+                ['is_starter_2627', 'predicted_pts_p50', 'vorp_points'], ascending=[False, False, False]
+            )
+        else:
+            sample_df = sample_df.sort_values(['is_starter_2627', 'vorp_points'], ascending=[False, False])
+
+        if sample_df.empty:
+            sample_df = unassigned_df.sort_values('vorp_points', ascending=False)
+
+        top_sample = sample_df.head(35)[['player', 'role', 'team', 'predicted_pts_p50', 'prezzo_fair_1000', 'vorp_points', 'is_starter_2627']].to_dict(orient='records')
         team_context = {
             "name": team["name"],
             "remaining": team["remaining"],
@@ -922,8 +966,8 @@ def api_ai_query():
         )
         if llm_reply:
             return jsonify(llm_reply)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"Copilot exception: {e}")
 
     # ─────────────────────────────────────────────────────────────
     # 2. LOCAL QUANTITATIVE REASONING ENGINE (Zero Latency & 0 Cost)
@@ -3843,6 +3887,12 @@ HTML_TEMPLATE = """
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ prompt: prompt, profile_id: activeProfileId })
                 });
+
+                if (!res.ok) {
+                    const errTxt = await res.text();
+                    throw new Error(`Server ${res.status}: ${errTxt.slice(0, 100)}`);
+                }
+
                 const data = await res.json();
 
                 // Remove loading bubble
@@ -3860,6 +3910,7 @@ HTML_TEMPLATE = """
                 `;
                 stream.appendChild(aiMsg);
             } catch(e) {
+                console.error("AI Chat Exception:", e);
                 const loadElem = document.getElementById('aiChatLoadingBubble');
                 if (loadElem) loadElem.remove();
 
@@ -3867,8 +3918,8 @@ HTML_TEMPLATE = """
                 errBubble.className = 'chat-msg ai';
                 errBubble.innerHTML = `
                     ${AI_AVATAR_HTML}
-                    <div class="chat-bubble" style="color:var(--danger);">
-                        Errore di elaborazione. Riprova con un'altra domanda.
+                    <div class="chat-bubble" style="color:var(--danger); font-size:0.85rem;">
+                        <b>Errore di elaborazione:</b> ${escapeHTML(e.message || 'Riprova con un\\'altra domanda.')}
                     </div>
                 `;
                 stream.appendChild(errBubble);
@@ -3946,121 +3997,122 @@ HTML_TEMPLATE = """
             if (!data) return 'Nessuna risposta disponibile.';
             const engineTag = `<div style="margin-top:8px; padding-top:6px; border-top:1px dashed rgba(255,255,255,0.08); font-size:0.68rem; color:var(--text-muted); display:flex; justify-content:space-between; align-items:center;"><span>Fonte: <b style="color:var(--primary);">${data.engine || 'Regole Tattiche Offline'}</b></span><span>${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span></div>`;
 
-            if (data.type === 'llm_chat') {
-                return `<div>${formatMarkdownText(data.text)}${engineTag}</div>`;
-            }
+            try {
+                if (data.type === 'llm_chat') {
+                    return `<div>${formatMarkdownText(data.text || '')}${engineTag}</div>`;
+                }
 
-            if (data.type === 'roster_diagnostic') {
-                const s = data.stats;
-                return `
-                    <div>
-                        <div style="font-weight:800; font-size:1.02rem; color:var(--primary); margin-bottom:8px;">${data.title}</div>
-                        <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:6px; background:#0b111e; padding:8px 10px; border-radius:8px; margin-bottom:10px; font-size:0.82rem;">
-                            <div>Crediti Residui: <b style="color:var(--gold);">${s.remaining} cr</b></div>
-                            <div>Max Rilancio: <b style="color:var(--danger);">${s.max_bid} cr</b></div>
-                            <div>Slot Liberi: <b>${s.free_slots.total}</b> (P:${s.free_slots.P} D:${s.free_slots.D} C:${s.free_slots.C} A:${s.free_slots.A})</div>
-                            <div>Media cr/slot: <b>${s.avg_per_slot} cr</b></div>
+                if (data.type === 'roster_diagnostic') {
+                    const s = data.stats || {};
+                    const free = s.free_slots || {};
+                    return `
+                        <div>
+                            <div style="font-weight:800; font-size:1.02rem; color:var(--primary); margin-bottom:8px;">${data.title || 'Diagnosi Rosa'}</div>
+                            <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:6px; background:#0b111e; padding:8px 10px; border-radius:8px; margin-bottom:10px; font-size:0.82rem;">
+                                <div>Crediti Residui: <b style="color:var(--gold);">${s.remaining || 0} cr</b></div>
+                                <div>Max Rilancio: <b style="color:var(--danger);">${s.max_bid || 0} cr</b></div>
+                                <div>Slot Liberi: <b>${free.total || 0}</b> (P:${free.P || 0} D:${free.D || 0} C:${free.C || 0} A:${free.A || 0})</div>
+                                <div>Media cr/slot: <b>${s.avg_per_slot || 0} cr</b></div>
+                            </div>
+                            <div style="margin-bottom:8px;">
+                                ${(data.advice || []).map(a => `<div style="margin-bottom:4px; font-size:0.85rem;">&bull; ${a}</div>`).join('')}
+                            </div>
+                            <div style="background:rgba(56,189,248,0.08); border-left:3px solid var(--primary); padding:8px 10px; border-radius:4px; font-size:0.85rem;">
+                                ${data.verdict || ''}
+                            </div>
+                            ${engineTag}
                         </div>
-                        <div style="margin-bottom:8px;">
-                            ${data.advice.map(a => `<div style="margin-bottom:4px; font-size:0.85rem;">&bull; ${a}</div>`).join('')}
-                        </div>
-                        <div style="background:rgba(56,189,248,0.08); border-left:3px solid var(--primary); padding:8px 10px; border-radius:4px; font-size:0.85rem;">
-                            ${data.verdict}
-                        </div>
-                        ${engineTag}
-                    </div>
-                `;
-            }
+                    `;
+                }
 
-            if (data.type === 'comparison') {
-                const players = data.players || [];
-                return `
-                    <div>
-                        <div style="font-weight:800; font-size:1rem; color:var(--primary); margin-bottom:10px;">${data.title}</div>
-                        <div style="display:grid; grid-template-columns:${players.length > 2 ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)'}; gap:8px; margin-bottom:10px;">
-                            ${players.map(p => `
-                                <div style="background:#0b111e; padding:10px 8px; border-radius:8px; border:1px solid var(--border); font-size:0.82rem;">
-                                    <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
-                                        <span class="badge badge-${p.role}">${p.role}</span>
-                                        <b>${p.name}</b>
+                if (data.type === 'comparison') {
+                    const players = data.players || [];
+                    return `
+                        <div>
+                            <div style="font-weight:800; font-size:1rem; color:var(--primary); margin-bottom:10px;">${data.title || 'Confronto'}</div>
+                            <div style="display:grid; grid-template-columns:${players.length > 2 ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)'}; gap:8px; margin-bottom:10px;">
+                                ${players.map(p => `
+                                    <div style="background:#0b111e; padding:10px 8px; border-radius:8px; border:1px solid var(--border); font-size:0.82rem;">
+                                        <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+                                            <span class="badge badge-${p.role}">${p.role}</span>
+                                            <b>${p.name}</b>
+                                        </div>
+                                        <div style="color:var(--text-muted); font-size:0.75rem; margin-bottom:4px;">${p.team} - ${p.starts || 0} start</div>
+                                        <div>Punti Attesi: <b>${p.pts_exp || 0} pts</b></div>
+                                        <div>Fair Price: <b style="color:var(--gold);">${p.fair_1000 || 1} cr</b></div>
+                                        <div>VORP: <b style="color:var(--success);">+${p.vorp || 0}</b></div>
                                     </div>
-                                    <div style="color:var(--text-muted); font-size:0.75rem; margin-bottom:4px;">${p.team} - ${p.starts} start</div>
-                                    <div>Punti Attesi: <b>${p.pts_exp} pts</b></div>
-                                    <div>Fair Price: <b style="color:var(--gold);">${p.fair_1000} cr</b></div>
-                                    <div>VORP: <b style="color:var(--success);">+${p.vorp}</b></div>
-                                    <div>Infortuni: <small style="color:${p.injury_days > 40 ? 'var(--danger)' : 'var(--text-muted)'};">${p.injury_days} gg</small></div>
+                                `).join('')}
+                            </div>
+                            <div style="background:rgba(56,189,248,0.08); border-left:3px solid var(--primary); padding:8px 10px; border-radius:4px; font-size:0.85rem;">
+                                ${formatMarkdownText(data.verdict || '')}
+                            </div>
+                            ${engineTag}
+                        </div>
+                    `;
+                }
+
+                if (data.type === 'player_deepdive') {
+                    const p = data.player || {};
+                    return `
+                        <div>
+                            <div style="font-weight:800; font-size:1.02rem; color:var(--gold); margin-bottom:8px;">${data.title}</div>
+                            <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; text-align:center; margin-bottom:10px;">
+                                <div style="background:#0b111e; padding:8px; border-radius:6px; border:1px solid var(--border);">
+                                    <div style="font-size:0.7rem; color:var(--text-muted); font-weight:700;">PROIEZIONE P50</div>
+                                    <div style="font-size:1.1rem; font-weight:800; color:var(--primary);">${p.pts_exp || 0} pts</div>
                                 </div>
-                            `).join('')}
-                        </div>
-                        <div style="background:rgba(56,189,248,0.08); border-left:3px solid var(--primary); padding:8px 10px; border-radius:4px; font-size:0.85rem;">
-                            ${formatMarkdownText(data.verdict)}
-                        </div>
-                        ${engineTag}
-                    </div>
-                `;
-            }
-
-            if (data.type === 'player_deepdive') {
-                const p = data.player;
-                return `
-                    <div>
-                        <div style="font-weight:800; font-size:1.02rem; color:var(--gold); margin-bottom:8px;">${data.title}</div>
-                        <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; text-align:center; margin-bottom:10px;">
-                            <div style="background:#0b111e; padding:8px; border-radius:6px; border:1px solid var(--border);">
-                                <div style="font-size:0.7rem; color:var(--text-muted); font-weight:700;">PROIEZIONE P50</div>
-                                <div style="font-size:1.1rem; font-weight:800; color:var(--primary);">${p.pts_exp} pts</div>
-                                <div style="font-size:0.7rem; color:var(--text-muted);">${p.pts_floor} - ${p.pts_ceil}</div>
-                            </div>
-                            <div style="background:#0b111e; padding:8px; border-radius:6px; border:1px solid var(--border);">
-                                <div style="font-size:0.7rem; color:var(--text-muted); font-weight:700;">FAIR PRICE 1000</div>
-                                <div style="font-size:1.1rem; font-weight:800; color:var(--gold);">${p.fair_1000} cr</div>
-                                <div style="font-size:0.7rem; color:var(--success);">Surplus +${p.surplus} cr</div>
-                            </div>
-                            <div style="background:#0b111e; padding:8px; border-radius:6px; border:1px solid var(--border);">
-                                <div style="font-size:0.7rem; color:var(--text-muted); font-weight:700;">TITOLARITÀ REALE</div>
-                                <div style="font-size:1.1rem; font-weight:800; color:var(--success);">${p.starts} start</div>
-                                <div style="font-size:0.7rem; color:var(--text-muted);">${p.minutes} min</div>
-                            </div>
-                        </div>
-                        <div style="background:rgba(56,189,248,0.08); border-left:3px solid var(--gold); padding:8px 10px; border-radius:4px; font-size:0.85rem; margin-bottom:8px;">
-                            ${formatMarkdownText(data.verdict)}
-                        </div>
-                        <button class="btn btn-secondary" style="padding:6px 12px; font-size:0.82rem;" onclick="openTargetModal('${p.name.replace(/'/g, "\\\\'")}')">
-                            + Aggiungi ai Miei Target
-                        </button>
-                        ${engineTag}
-                    </div>
-                `;
-            }
-
-            if (data.type === 'recommendations') {
-                const players = data.players || [];
-                return `
-                    <div>
-                        <div style="font-weight:800; font-size:1rem; color:var(--success); margin-bottom:8px;">${data.title}</div>
-                        <div style="margin-bottom:10px;">
-                            ${players.map(p => `
-                                <div class="candidate-mini-row" onclick="openTargetModal('${p.name.replace(/'/g, "\\\\'")}')">
-                                    <div style="display:flex; align-items:center; gap:8px;">
-                                        <span class="badge badge-${p.role}">${p.role}</span>
-                                        <b>${p.name}</b> <small style="color:var(--text-muted);">(${p.team})</small>
-                                    </div>
-                                    <div style="text-align:right;">
-                                        <span style="color:var(--gold); font-weight:800; font-size:0.95rem;">${p.fair_1000} cr</span>
-                                        <span style="color:var(--primary); font-size:0.78rem; margin-left:6px;">+${p.vorp} vorp</span>
-                                    </div>
+                                <div style="background:#0b111e; padding:8px; border-radius:6px; border:1px solid var(--border);">
+                                    <div style="font-size:0.7rem; color:var(--text-muted); font-weight:700;">FAIR PRICE 1000</div>
+                                    <div style="font-size:1.1rem; font-weight:800; color:var(--gold);">${p.fair_1000 || 1} cr</div>
                                 </div>
-                            `).join('')}
+                                <div style="background:#0b111e; padding:8px; border-radius:6px; border:1px solid var(--border);">
+                                    <div style="font-size:0.7rem; color:var(--text-muted); font-weight:700;">TITOLARITÀ REALE</div>
+                                    <div style="font-size:1.1rem; font-weight:800; color:var(--success);">${p.starts || 0} start</div>
+                                </div>
+                            </div>
+                            <div style="background:rgba(56,189,248,0.08); border-left:3px solid var(--gold); padding:8px 10px; border-radius:4px; font-size:0.85rem; margin-bottom:8px;">
+                                ${formatMarkdownText(data.verdict || '')}
+                            </div>
+                            ${engineTag}
                         </div>
-                        <div style="background:rgba(16,185,129,0.08); border-left:3px solid var(--success); padding:8px 10px; border-radius:4px; font-size:0.85rem;">
-                            ${formatMarkdownText(data.verdict)}
-                        </div>
-                        ${engineTag}
-                    </div>
-                `;
-            }
+                    `;
+                }
 
-            return `<div>${formatMarkdownText(data.verdict || JSON.stringify(data))}${engineTag}</div>`;
+                if (data.type === 'recommendations') {
+                    const players = data.players || [];
+                    return `
+                        <div>
+                            <div style="font-weight:800; font-size:1rem; color:var(--success); margin-bottom:8px;">${data.title}</div>
+                            <div style="margin-bottom:10px;">
+                                ${players.map(p => `
+                                    <div class="candidate-mini-row" style="display:flex; justify-content:space-between; align-items:center; padding:6px 8px; margin-bottom:4px; background:#0b111e; border-radius:6px; border:1px solid var(--border);">
+                                        <div style="display:flex; align-items:center; gap:8px;">
+                                            <span class="badge badge-${p.role}">${p.role}</span>
+                                            <b>${p.name}</b> <small style="color:var(--text-muted);">(${p.team})</small>
+                                        </div>
+                                        <div style="text-align:right;">
+                                            <span style="color:var(--gold); font-weight:800; font-size:0.95rem;">${p.fair_1000} cr</span>
+                                            <span style="color:var(--primary); font-size:0.78rem; margin-left:6px;">+${p.vorp} vorp</span>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                            <div style="background:rgba(16,185,129,0.08); border-left:3px solid var(--success); padding:8px 10px; border-radius:4px; font-size:0.85rem;">
+                                ${formatMarkdownText(data.verdict || '')}
+                            </div>
+                            ${engineTag}
+                        </div>
+                    `;
+                }
+
+                // Generic fallback for any unexpected type or structure
+                const fallbackText = data.text || data.verdict || JSON.stringify(data);
+                return `<div>${formatMarkdownText(fallbackText)}${engineTag}</div>`;
+            } catch(renderErr) {
+                console.error("renderAIChatContent Error:", renderErr);
+                return `<div>${formatMarkdownText(data.text || data.verdict || 'Risposta elaborata.')}${engineTag}</div>`;
+            }
         }
 
         async function fetchAIStatus() {

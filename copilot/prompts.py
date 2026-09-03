@@ -51,11 +51,27 @@ def build_system_prompt(team_context: dict, budget_total: int = 1000, is_persona
 
 
 def build_user_prompt(prompt: str, top_players: list) -> str:
-    """Build user prompt with grounded player data context."""
-    players_json = json.dumps(top_players[:40], ensure_ascii=False) if top_players else "[]"
+    """Build user prompt with grounded player data context in clean readable table format."""
+    lines = [
+        "| Giocatore | Ruolo | Squadra | P50 Atteso | Prezzo Fair (1000) | VORP | Titolare 26/27 |",
+        "|---|---|---|---|---|---|---|"
+    ]
+    for p in (top_players or [])[:35]:
+        starter = "SI" if p.get("is_starter_2627") else "No"
+        p50 = float(p.get("predicted_pts_p50", 0))
+        fair = int(p.get("prezzo_fair_1000", 1))
+        vorp = float(p.get("vorp_points", 0))
+        lines.append(f"| {p.get('player')} | {p.get('role')} | {p.get('team')} | {p50:.1f} | {fair} cr | +{vorp:.1f} | {starter} |")
+
+    table_str = "\n".join(lines)
 
     return (
-        f"Top Giocatori Liberi di Riferimento (dati reali dal modello ML):\n"
-        f"{players_json}\n\n"
-        f"Domanda del manager: {prompt}"
+        f"DATI UFFICIALI CALCIATORI DISPONIBILI DAL MODELLO ML:\n"
+        f"{table_str}\n\n"
+        f"Domanda del manager: {prompt}\n\n"
+        f"ISTRUZIONI CHIAVE:\n"
+        f"- Basa la tua risposta esclusivamente sui giocatori presenti nella tabella sopra.\n"
+        f"- Se il manager chiede difensori, centrocampisti o colpi 'a 1 credito', low cost o da risparmio, "
+        f"elenca i migliori profili tra quelli a minor prezzo fair (1-5 cr) con titolarità certa o alto VORP.\n"
+        f"- Se non ce ne sono esattamente a 1 cr, cita i più economici disponibili spiegando il prezzo stimato."
     )
