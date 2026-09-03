@@ -85,17 +85,16 @@ class OpenAIProvider(CopilotProvider):
 
 
 class GeminiProvider(CopilotProvider):
-    """Google Gemini native REST API with auto model fallback."""
+    """Google Gemini native REST API with verified active models."""
     CANDIDATE_MODELS = [
-        "gemini-1.5-flash",
-        "gemini-2.0-flash",
-        "gemini-1.5-pro",
-        "gemini-2.5-flash"
+        "gemini-2.5-flash",
+        "gemini-flash-latest",
+        "gemini-2.5-pro"
     ]
 
     def __init__(self, api_key: str, model: str | None = None):
         self.api_key = api_key
-        self.model = model or os.environ.get("GEMINI_MODEL") or "gemini-1.5-flash"
+        self.model = model or os.environ.get("GEMINI_MODEL") or "gemini-2.5-flash"
         self.engine_name = f"Gemini ({self.model})"
 
     def query(self, system_prompt: str, user_prompt: str, temperature: float = 0.35, max_tokens: int = 650) -> str | None:
@@ -128,16 +127,15 @@ class GeminiProvider(CopilotProvider):
 
 
 class GroqProvider(OpenAIProvider):
-    """Zero-cost cloud LLM inference via Groq Free Tier with auto model fallback."""
+    """Zero-cost cloud LLM inference via Groq Free Tier with verified active models."""
     CANDIDATE_MODELS = [
-        "llama-3.1-8b-instant",
-        "llama-3.1-70b-versatile",
-        "llama-3.3-70b-versatile",
-        "mixtral-8x7b-32768"
+        "openai/gpt-oss-120b",
+        "qwen/qwen3.6-27b",
+        "qwen/qwen3.8-27b"
     ]
 
     def __init__(self, api_key: str, model: str | None = None):
-        target_model = model or os.environ.get("GROQ_MODEL") or "llama-3.1-8b-instant"
+        target_model = model or os.environ.get("GROQ_MODEL") or "openai/gpt-oss-120b"
         super().__init__(
             base_url="https://api.groq.com/openai/v1",
             api_key=api_key,
@@ -206,13 +204,13 @@ def get_copilot_provider() -> CopilotProvider | None:
 
     # 1. Groq Free Tier (Ultra-fast, 0 token cost, no credit card required)
     groq_key = os.environ.get("GROQ_API_KEY")
-    groq_model = os.environ.get("GROQ_MODEL") or "llama-3.1-8b-instant"
+    groq_model = os.environ.get("GROQ_MODEL") or "openai/gpt-oss-120b"
     if groq_key:
         available_providers.append(GroqProvider(api_key=groq_key, model=groq_model))
 
     # 2. Google Gemini Free Tier
     gemini_key = os.environ.get("GEMINI_API_KEY")
-    gemini_model = os.environ.get("GEMINI_MODEL") or "gemini-1.5-flash"
+    gemini_model = os.environ.get("GEMINI_MODEL") or "gemini-2.5-flash"
     if gemini_key:
         available_providers.append(GeminiProvider(api_key=gemini_key, model=gemini_model))
 
@@ -294,12 +292,12 @@ def test_all_providers() -> dict:
     groq_key = os.environ.get("GROQ_API_KEY")
     if groq_key:
         try:
-            resp_m = requests.get("https://api.groq.com/openai/v1/models", headers={"Authorization": f"Bearer {groq_key}"}, timeout=5)
-            if resp_m.status_code == 200:
-                m_list = [m.get("id") for m in resp_m.json().get("data", [])]
-                results["groq"] = {"ok": True, "status_code": 200, "available_models": m_list[:8]}
+            gp = GroqProvider(api_key=groq_key)
+            reply = gp.query("System: You are a fast ping responder.", "Reply PONG in one word.", max_tokens=10)
+            if reply:
+                results["groq"] = {"ok": True, "status_code": 200, "msg": f"Connessione riuscita ({gp.engine_name})"}
             else:
-                results["groq"] = {"ok": False, "status_code": resp_m.status_code, "msg": f"{resp_m.status_code}: {resp_m.text[:150]}"}
+                results["groq"] = {"ok": False, "status_code": 404, "msg": "Nessun modello Groq disponibile con questa chiave"}
         except Exception as e:
             results["groq"] = {"ok": False, "status_code": None, "msg": f"Eccezione: {str(e)}"}
     else:
@@ -309,13 +307,12 @@ def test_all_providers() -> dict:
     gemini_key = os.environ.get("GEMINI_API_KEY")
     if gemini_key:
         try:
-            url_m = f"https://generativelanguage.googleapis.com/v1beta/models?key={gemini_key}"
-            resp_m = requests.get(url_m, timeout=5)
-            if resp_m.status_code == 200:
-                m_list = [m.get("name").replace("models/", "") for m in resp_m.json().get("models", []) if "generateContent" in m.get("supportedGenerationMethods", [])]
-                results["gemini"] = {"ok": True, "status_code": 200, "available_models": m_list[:8]}
+            gem = GeminiProvider(api_key=gemini_key)
+            reply = gem.query("System: You are a fast ping responder.", "Reply PONG in one word.", max_tokens=10)
+            if reply:
+                results["gemini"] = {"ok": True, "status_code": 200, "msg": f"Connessione riuscita ({gem.engine_name})"}
             else:
-                results["gemini"] = {"ok": False, "status_code": resp_m.status_code, "msg": f"{resp_m.status_code}: {resp_m.text[:150]}"}
+                results["gemini"] = {"ok": False, "status_code": 404, "msg": "Nessun modello Gemini disponibile con questa chiave"}
         except Exception as e:
             results["gemini"] = {"ok": False, "status_code": None, "msg": f"Eccezione: {str(e)}"}
     else:
