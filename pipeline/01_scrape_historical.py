@@ -73,7 +73,10 @@ def scrape_fantacalcio_season(season):
         if not link_tag:
             continue
         href = link_tag.get("href", "")
-        pid_match = re.search(r"/(\d+)$", href)
+        # Player id is a pure-numeric path segment, optionally followed by a
+        # trailing (non-numeric-only) segment such as the season slug, e.g.
+        # ".../venturino/6980" or ".../venturino/6980/2024-25".
+        pid_match = re.search(r"/(\d+)(?:/[^/]+)?/?$", href)
         player_id = int(pid_match.group(1)) if pid_match else None
 
         name        = row.get("data-filter-keywords", "").strip()
@@ -211,6 +214,25 @@ def aggregate_players(df_raw):
     return df_agg
 
 
+def validate_raw_data(df, null_threshold=0.05):
+    """
+    Guardrail against silent upstream breakage (e.g. fantacalcio.it changing
+    its HTML/URL structure). If a critical column comes back mostly null,
+    fail loudly here instead of writing a corrupt CSV that only surfaces as
+    a confusing crash several pipeline stages later.
+    """
+    critical_cols = ["player_id", "mv", "mfv"]
+    for col in critical_cols:
+        null_pct = df[col].isna().mean() if col in df.columns else 1.0
+        if null_pct > null_threshold:
+            raise RuntimeError(
+                f"Stage 1 aborted: column '{col}' is {null_pct:.0%} null "
+                f"(threshold {null_threshold:.0%}). fantacalcio.it likely changed "
+                f"its page/URL structure and broke the scraper — fix the parser "
+                f"in scrape_fantacalcio_season() before re-running."
+            )
+
+
 # ──────────────────────────────────────────────────────────────────────
 # PARTE 2 — FOOTBALL-DATA.CO.UK (storico squadre)
 # ──────────────────────────────────────────────────────────────────────
@@ -309,6 +331,7 @@ def main():
     print("=" * 60)
 
     df_players_raw = scrape_all_fantacalcio()
+    validate_raw_data(df_players_raw)
     df_players_raw.to_csv(config.STORICO_RAW_CSV, index=False, encoding="utf-8-sig")
     print(f"\n  SALVATO: {config.STORICO_RAW_CSV}")
 
