@@ -29,9 +29,19 @@ def prepare_training_data():
     raw_path = config.STORICO_RAW_CSV
     if not os.path.exists(raw_path):
         print(f"Warning: {raw_path} not found.")
-        return None, None
+        return None, None, None
 
     df_raw = pd.read_csv(raw_path)
+
+    # Guardrail: a mostly-null player_id means Stage 1's scraper broke
+    # (e.g. upstream site changed structure) and wrote corrupt data.
+    # Fail loudly here instead of silently training on zero samples.
+    null_pct = df_raw["player_id"].isna().mean() if "player_id" in df_raw.columns else 1.0
+    if null_pct > 0.05:
+        raise RuntimeError(
+            f"{raw_path} has {null_pct:.0%} null player_id — source data looks "
+            f"corrupt. Re-run Stage 1 (--step 1) to regenerate it before retraining."
+        )
 
     # Chronological season index
     season_order = sorted(df_raw["season"].unique())
@@ -94,6 +104,10 @@ def prepare_training_data():
 
     df_train = pd.DataFrame(records)
     print(f"  Generated {len(df_train)} lagged player-season transition samples (Zero Data Leakage).")
+
+    if df_train.empty:
+        print(f"  Warning: no lagged transition samples produced from {raw_path}.")
+        return None, None, None
 
     feature_cols = [
         "mv", "mfv", "gol_rate", "ass_rate", "amm_rate", "avail_rate",
