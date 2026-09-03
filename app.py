@@ -3919,7 +3919,7 @@ HTML_TEMPLATE = """
                 errBubble.innerHTML = `
                     ${AI_AVATAR_HTML}
                     <div class="chat-bubble" style="color:var(--danger); font-size:0.85rem;">
-                        <b>Errore di elaborazione:</b> ${escapeHTML(e.message || 'Riprova con un\\'altra domanda.')}
+                        <b>Errore di elaborazione:</b> ${escapeHTML(e.message || "Riprova con un'altra domanda.")}
                     </div>
                 `;
                 stream.appendChild(errBubble);
@@ -3983,10 +3983,10 @@ HTML_TEMPLATE = """
             formatted = formatted.replace(/^### (.*$)/gim, '<h4 style="color:var(--primary); font-size:0.95rem; margin:10px 0 4px 0;">$1</h4>');
             formatted = formatted.replace(/^## (.*$)/gim, '<h3 style="color:var(--text-main); font-size:1.02rem; margin:12px 0 6px 0;">$1</h3>');
             // Bold & Italic
-            formatted = formatted.replace(new RegExp('\\*\\*(.*?)\\*\\*', 'g'), '<b style="color:var(--text-main);">$1</b>');
-            formatted = formatted.replace(new RegExp('\\*(.*?)\\*', 'g'), '<i style="color:var(--text-muted);">$1</i>');
+            formatted = formatted.replace(/\\*\\*(.*?)\\*\\*/g, '<b style="color:var(--text-main);">$1</b>');
+            formatted = formatted.replace(/\\*(.*?)\\*/g, '<i style="color:var(--text-muted);">$1</i>');
             // Bullet Points
-            formatted = formatted.replace(new RegExp('^\\s*-\\s+(.*$)', 'gim'), '<div style="display:flex; gap:6px; margin-bottom:3px;"><span style="color:var(--primary);">&bull;</span><span>$1</span></div>');
+            formatted = formatted.replace(/^\\s*-\\s+(.*$)/gim, '<div style="display:flex; gap:6px; margin-bottom:3px;"><span style="color:var(--primary);">&bull;</span><span>$1</span></div>');
             // Spacing
             formatted = formatted.split(nl + nl).join('<div style="height:8px;"></div>');
             formatted = formatted.split(nl).join('<br>');
