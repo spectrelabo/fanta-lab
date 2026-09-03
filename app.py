@@ -2139,12 +2139,157 @@ HTML_TEMPLATE = """
         }
 
         @media (max-width: 899px) {
+            /* Smooth Airy Bottom Navigation */
             nav.bottom-nav {
                 display: flex !important;
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                height: 58px;
+                background: rgba(4, 6, 12, 0.94) !important;
+                backdrop-filter: blur(20px) !important;
+                -webkit-backdrop-filter: blur(20px) !important;
+                border-top: 1px solid rgba(255, 45, 117, 0.22) !important;
+                box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.7) !important;
+                z-index: 1000;
+                padding-bottom: max(4px, env(safe-area-inset-bottom, 6px)) !important;
+                padding-top: 3px !important;
             }
+            .nav-item {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                color: #94a3b8;
+                font-size: 0.68rem !important;
+                font-weight: 600;
+                cursor: pointer;
+                border: none;
+                background: transparent;
+                gap: 2px !important;
+                padding: 4px 1px !important;
+                border-radius: 8px;
+                touch-action: manipulation;
+                -webkit-tap-highlight-color: transparent;
+                transition: all 0.15s ease;
+            }
+            .nav-item:active {
+                transform: scale(0.92);
+            }
+            .nav-item.active {
+                color: #ff2d75 !important;
+                font-weight: 800 !important;
+                background: rgba(255, 45, 117, 0.09) !important;
+            }
+            .nav-item.active .nav-svg {
+                stroke: #ff2d75 !important;
+                filter: drop-shadow(0 0 6px rgba(255, 45, 117, 0.75)) !important;
+            }
+            .nav-svg {
+                width: 19px !important;
+                height: 19px !important;
+            }
+
             body {
-                padding-bottom: 84px !important;
+                padding-bottom: calc(68px + env(safe-area-inset-bottom, 12px)) !important;
             }
+            .container {
+                padding: 10px 8px !important;
+            }
+
+            /* De-densified Cards & Spacing */
+            .card {
+                padding: 12px 10px !important;
+                margin-bottom: 10px !important;
+                border-radius: 10px !important;
+            }
+            .card-header {
+                margin-bottom: 8px !important;
+                padding-bottom: 6px !important;
+            }
+            .card-title {
+                font-size: 0.88rem !important;
+            }
+
+            /* Compact Ergonomic Pills */
+            .pills {
+                gap: 6px !important;
+                margin-bottom: 10px !important;
+                padding-bottom: 4px !important;
+            }
+            .pill {
+                padding: 6px 12px !important;
+                font-size: 0.78rem !important;
+                font-weight: 700 !important;
+                border-radius: 18px !important;
+            }
+
+            /* Lightweight Player Rows */
+            .player-row {
+                padding: 9px 10px !important;
+                margin-bottom: 6px !important;
+                border-radius: 9px !important;
+                gap: 6px !important;
+            }
+            .player-name {
+                font-size: 0.92rem !important;
+                gap: 5px !important;
+            }
+            .player-meta {
+                font-size: 0.72rem !important;
+                gap: 4px !important;
+            }
+            .scout-price-box {
+                padding: 3px 7px !important;
+                border-radius: 6px !important;
+            }
+            .player-fair {
+                font-size: 0.92rem !important;
+            }
+
+            /* Compact 2D Pitch */
+            .pitch-board {
+                min-height: 280px !important;
+                max-height: 330px !important;
+                padding: 10px 6px !important;
+                border-radius: 10px !important;
+            }
+            .pitch-node {
+                min-width: 46px !important;
+            }
+            .pitch-jersey {
+                width: 28px !important;
+                height: 28px !important;
+                font-size: 0.72rem !important;
+            }
+            .pitch-node-name {
+                font-size: 0.65rem !important;
+                max-width: 56px !important;
+            }
+            .pitch-node-price {
+                font-size: 0.65rem !important;
+            }
+
+            /* Department Grid */
+            .dept-grid {
+                gap: 6px !important;
+            }
+            .dept-card {
+                padding: 8px 4px !important;
+                border-radius: 6px !important;
+            }
+            .dept-label {
+                font-size: 0.65rem !important;
+            }
+            .dept-spent {
+                font-size: 0.95rem !important;
+            }
+            .dept-count {
+                font-size: 0.70rem !important;
+            }
+
             .mobile-sidebar-toggle {
                 display: flex !important;
             }
@@ -2160,9 +2305,6 @@ HTML_TEMPLATE = """
             .market-pill {
                 padding: 3px 8px;
                 font-size: 0.7rem;
-            }
-            .container {
-                padding: 14px 12px;
             }
         }
     </style>
