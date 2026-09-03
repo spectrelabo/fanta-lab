@@ -148,7 +148,10 @@ def compute_vorp_and_fair_prices(df_input, n_teams=DEFAULT_N_TEAMS):
         df[col_name] = fair_prices
 
     # 3. Surplus Value (Fair Price 1000 - Consensus Market FVM 1000)
-    market_fvm = pd.to_numeric(df.get("FVM_1000"), errors="coerce").fillna(df["prezzo_fair_1000"])
+    if "FVM_1000" in df.columns:
+        market_fvm = pd.to_numeric(df["FVM_1000"], errors="coerce").fillna(df["prezzo_fair_1000"])
+    else:
+        market_fvm = df["prezzo_fair_1000"].copy()
     df["surplus_value_cr"] = (df["prezzo_fair_1000"] - market_fvm).astype(int)
 
     return df, baselines

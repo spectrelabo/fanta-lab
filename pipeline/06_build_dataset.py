@@ -242,6 +242,13 @@ def merge_lineups(df):
     return df
 
 
+def get_series(df: pd.DataFrame, col: str, default_val=0.0) -> pd.Series:
+    """Safely extracts a numeric Series from df, avoiding AttributeError on missing columns."""
+    if col in df.columns:
+        return pd.to_numeric(df[col], errors="coerce").fillna(default_val)
+    return pd.Series(default_val, index=df.index, dtype=float)
+
+
 def compute_score(df):
     """
     Calcola lo score composito.
@@ -250,10 +257,9 @@ def compute_score(df):
     """
     w = config.SCORE_WEIGHTS
 
-    mv_base    = pd.to_numeric(df.get("mv_media_3y"), errors='coerce').fillna(
-                  pd.to_numeric(df["NN_MV_Atteso"], errors='coerce').fillna(0))
-    xg_base    = pd.to_numeric(df.get("xg_media_3y"), errors='coerce').fillna(0)
-    avail_base = pd.to_numeric(df.get("availability"), errors='coerce').fillna(0.75)
+    mv_base    = get_series(df, "mv_media_3y", np.nan).fillna(get_series(df, "NN_MV_Atteso", 0.0))
+    xg_base    = get_series(df, "xg_media_3y", 0.0)
+    avail_base = get_series(df, "availability", 0.75)
 
     df["score_composito"] = (
         w["mv_storica"]     * safe_norm(mv_base) +

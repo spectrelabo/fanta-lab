@@ -79,6 +79,13 @@ def train_quantile_models(X, y):
     return models
 
 
+def get_series(df: pd.DataFrame, col: str, default_val=0.0) -> pd.Series:
+    """Safely extracts a numeric Series from df, avoiding AttributeError on missing columns."""
+    if col in df.columns:
+        return pd.to_numeric(df[col], errors="coerce").fillna(default_val)
+    return pd.Series(default_val, index=df.index, dtype=float)
+
+
 def predict_active_dataset(models, df_active):
     """
     Applies the trained quantile models to the active roster dataset.
@@ -86,20 +93,19 @@ def predict_active_dataset(models, df_active):
     df = df_active.copy()
 
     # Handle new transfers from abroad & low historical Serie A sample sizes
-    fvm_arr = pd.to_numeric(df.get("FVM_1000"), errors="coerce").fillna(10.0)
-    prezzo_arr = pd.to_numeric(df.get("Prezzo_Consigliato_Cr"), errors="coerce").fillna(1.0)
+    fvm_arr = get_series(df, "FVM_1000", 10.0)
+    prezzo_arr = get_series(df, "Prezzo_Consigliato_Cr", 1.0)
     
     # 1. Base Mean Vote (MV)
-    mv_input = pd.to_numeric(df.get("mv_media_3y"), errors="coerce")
-    mv_fallback = pd.to_numeric(df.get("NN_MV_Atteso"), errors="coerce").fillna(6.05)
-    mv_input = np.where(mv_input.isna() | (mv_input < 5.6) & (fvm_arr >= 40), mv_fallback, mv_input)
-    mv_input = pd.Series(mv_input).fillna(6.05).clip(5.5, 7.0)
+    mv_input = pd.to_numeric(df["mv_media_3y"], errors="coerce") if "mv_media_3y" in df.columns else pd.Series(np.nan, index=df.index)
+    mv_fallback = get_series(df, "NN_MV_Atteso", 6.05)
+    mv_input = np.where(mv_input.isna() | ((mv_input < 5.6) & (fvm_arr >= 40)), mv_fallback, mv_input)
+    mv_input = pd.Series(mv_input, index=df.index).fillna(6.05).clip(5.5, 7.0)
 
     # 2. Availability (use real lineup data + high FVM/price fallback)
-    avail_rate = pd.to_numeric(df.get("availability"), errors="coerce").fillna(0.75)
-    is_starter = df.get("is_starter_2627", pd.Series(False, index=df.index))
-    is_starter = is_starter.fillna(False).astype(bool)
-    starter_pct = pd.to_numeric(df.get("starter_pct_2627"), errors="coerce").fillna(0.0)
+    avail_rate = get_series(df, "availability", 0.75)
+    is_starter = df["is_starter_2627"].fillna(False).astype(bool) if "is_starter_2627" in df.columns else pd.Series(False, index=df.index)
+    starter_pct = get_series(df, "starter_pct_2627", 0.0)
 
     # Confirmed starters from real lineups: availability >= 0.82 (31+ matches/38)
     # Scale based on starter percentage: 100% starter → 0.88, 50% starter → 0.82
@@ -116,12 +122,12 @@ def predict_active_dataset(models, df_active):
         np.maximum(avail_rate, 0.80),
         avail_rate
     )
-    avail_rate = pd.Series(avail_rate).clip(0.15, 1.0)
+    avail_rate = pd.Series(avail_rate, index=df.index).clip(0.15, 1.0)
 
     # 3. Gol & Assist rates
-    gol_rate = pd.to_numeric(df.get("gol_per_pg"), errors="coerce").fillna(0.0)
-    ass_rate = pd.to_numeric(df.get("ass_per_pg"), errors="coerce").fillna(0.0)
-    amm_rate = pd.to_numeric(df.get("amm_per_pg"), errors="coerce").fillna(0.12)
+    gol_rate = get_series(df, "gol_per_pg", 0.0)
+    ass_rate = get_series(df, "ass_per_pg", 0.0)
+    amm_rate = get_series(df, "amm_per_pg", 0.12)
 
     # Impute expected goal rate for foreign/new top strikers and midfielders
     for i in range(len(df)):
@@ -140,7 +146,7 @@ def predict_active_dataset(models, df_active):
     mfv_input = (mv_input + (gol_rate * 3.0) + (ass_rate * 1.0) - (amm_rate * 0.5)).clip(5.0, 9.5)
 
     # Adjust availability with medical injury malus
-    injury_malus = pd.to_numeric(df.get("malus_infortuni"), errors="coerce").fillna(0.0)
+    injury_malus = get_series(df, "malus_infortuni", 0.0)
     effective_avail = (avail_rate * (1.0 - 0.15 * injury_malus)).clip(0.15, 1.0)
 
     X_active = pd.DataFrame({
