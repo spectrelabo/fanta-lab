@@ -49,7 +49,7 @@ TOTAL_ROSTER_SIZE = sum(DEFAULT_ROSTER_SLOTS.values())  # 29 players
 
 DEFAULT_TEAMS = [
     {"id": 1, "name": "Io", "is_me": True},
-    {"id": 2, "name": "pippo", "is_me": False},i
+    {"id": 2, "name": "pippo", "is_me": False},
     {"id": 3, "name": "pluto", "is_me": False},
     {"id": 4, "name": "Aurelio", "is_me": False},
     {"id": 5, "name": "gio", "is_me": False},
@@ -2013,6 +2013,14 @@ HTML_TEMPLATE = """
 
             <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
                 <input type="text" id="listSearch" placeholder="Cerca calciatore o squadra..." oninput="renderListone()" style="margin-bottom:0; flex:1; min-width:160px;">
+                <select id="listSort" onchange="currentListSort=this.value; renderListone();" style="margin-bottom:0; width:auto; flex:none;">
+                    <option value="default">Ordina: Default</option>
+                    <option value="vorp_desc">VORP (alto → basso)</option>
+                    <option value="surplus_desc">Surplus (alto → basso)</option>
+                    <option value="price_desc">Prezzo Fair (alto → basso)</option>
+                    <option value="price_asc">Prezzo Fair (basso → alto)</option>
+                    <option value="pts_desc">Punti Attesi (alto → basso)</option>
+                </select>
                 <button class="btn-secondary" id="filterAvailableOnlyBtn" onclick="toggleFilterAvailableOnly()" style="width:auto; padding:0 12px; white-space:nowrap; font-size:0.8rem; font-weight:700;">
                     Solo Svincolati
                 </button>
@@ -2189,6 +2197,7 @@ HTML_TEMPLATE = """
         let selectedPlayer = null;
         let currentRoleFilter = 'ALL';
         let currentFasciaFilter = 'ALL';
+        let currentListSort = 'default';
         let currentTargetRoleFilter = 'ALL';
         let currentSelectedTeamId = 1;
         let currentStratRole = 'A';
@@ -3477,6 +3486,15 @@ HTML_TEMPLATE = """
                 if (q && !p.player.toLowerCase().includes(q) && !p.team.toLowerCase().includes(q)) return false;
                 return true;
             });
+
+            const sorters = {
+                vorp_desc: (a, b) => b.vorp - a.vorp,
+                surplus_desc: (a, b) => b.surplus_value - a.surplus_value,
+                price_desc: (a, b) => b.price_fair_1000 - a.price_fair_1000,
+                price_asc: (a, b) => a.price_fair_1000 - b.price_fair_1000,
+                pts_desc: (a, b) => b.pts_exp - a.pts_exp,
+            };
+            if (sorters[currentListSort]) filtered.sort(sorters[currentListSort]);
 
             const container = document.getElementById('listoneContainer');
             if (filtered.length === 0) {
