@@ -857,6 +857,17 @@ def api_undo():
     return jsonify({"success": True, "undone": last_action, "state": state})
 
 
+@app.route("/api/ai_status", methods=["GET"])
+def api_ai_status():
+    """Returns AI Copilot diagnostic status and active engine."""
+    try:
+        from copilot import get_copilot_diagnostics
+        diag = get_copilot_diagnostics()
+        return jsonify(diag)
+    except Exception as e:
+        return jsonify({"error": str(e), "has_llm": False, "active_engine": "Fallback Matematico Offline"})
+
+
 @app.route("/api/ai_query", methods=["POST"])
 def api_ai_query():
     """
@@ -931,6 +942,7 @@ def api_ai_query():
         return jsonify({
             "type": "roster_diagnostic",
             "title": f"Diagnosi Tattica: {team['name']}",
+            "engine": "Regole Tattiche Locali (Offline)",
             "stats": {
                 "remaining": team['remaining'],
                 "max_bid": team['max_bid'],
@@ -996,6 +1008,7 @@ def api_ai_query():
             return jsonify({
                 "type": "comparison",
                 "title": f"Confronto: {' vs '.join([p['name'] for p in p_list])}",
+                "engine": "Regole Tattiche Locali (Offline)",
                 "players": p_list,
                 "winner": winner['player'],
                 "verdict": f"Scelta Consigliata: **{winner['player']}** è il profilo con efficienza superiore (+{winner.get('vorp_points', 0):.1f} VORP, {winner.get('predicted_pts_p50', 0):.1f} pts attesi, Prezzo Fair: {int(winner.get('prezzo_fair_1000', 1))} cr)."
@@ -1009,6 +1022,7 @@ def api_ai_query():
             return jsonify({
                 "type": "player_deepdive",
                 "title": f"Scheda Analitica: {row['player']} ({row['team']})",
+                "engine": "Regole Tattiche Locali (Offline)",
                 "player": {
                     "name": row['player'],
                     "team": row['team'],
@@ -1028,12 +1042,26 @@ def api_ai_query():
                 "verdict": f"Valutazione Modello: Prezzo fair stimato a 1000cr: **{row.get('prezzo_fair_1000', 1)} cr**. {starter_txt} con proiezione P50 di **{row.get('predicted_pts_p50', 0):.1f} punti attesi** e VORP **+{row.get('vorp_points', 0):.1f}**."
             })
 
-    # D. Recommendations by Role, Budget, or Modificatore
+    # D. Recommendations by Role, Team, Budget, or Modificatore
     role_map = {'portier': 'P', 'difensor': 'D', 'centrocampist': 'C', 'attaccant': 'A'}
     target_role = None
     for k, v in role_map.items():
         if k in prompt_lower:
             target_role = v
+            break
+
+    team_map = {
+        'como': 'COM', 'milan': 'MIL', 'juve': 'JUV', 'juventus': 'JUV',
+        'inter': 'INT', 'roma': 'ROM', 'lazio': 'LAZ', 'atalanta': 'ATA',
+        'napoli': 'NAP', 'bologna': 'BOL', 'fiorentina': 'FIO', 'torino': 'TOR',
+        'genoa': 'GEN', 'lecce': 'LEC', 'udinese': 'UDI', 'parma': 'PAR',
+        'sassuolo': 'SAS', 'monza': 'MON', 'venezia': 'VEN', 'frosinone': 'FRO',
+        'cagliari': 'CAG'
+    }
+    target_team = None
+    for k_team, v_code in team_map.items():
+        if re.search(rf'\b{re.escape(k_team)}\b', prompt_lower):
+            target_team = v_code
             break
 
     budget_match = re.search(r'(?:sotto|meno di|max|entro|budget|fino a)\s*(\d+)', prompt_lower)
@@ -1042,6 +1070,8 @@ def api_ai_query():
     filtered = df.copy()
     filtered = filtered[~filtered['player'].isin(assigned.keys())]
 
+    if target_team:
+        filtered = filtered[filtered['team'] == target_team]
     if target_role:
         filtered = filtered[filtered['role'] == target_role]
     if max_budget:
@@ -1068,11 +1098,13 @@ def api_ai_query():
         })
 
     role_desc = {"P": "Portieri", "D": "Difensori", "C": "Centrocampisti", "A": "Attaccanti"}.get(target_role, "Calciatori")
+    team_desc = f" ({target_team})" if target_team else ""
     budget_desc = f" entro {max_budget} cr" if max_budget else ""
 
     return jsonify({
         "type": "recommendations",
-        "title": f"Migliori Opportunità Disponibili: {role_desc}{budget_desc}",
+        "title": f"Migliori Opportunità Disponibili: {role_desc}{team_desc}{budget_desc}",
+        "engine": "Regole Tattiche Locali (Offline)",
         "players": records,
         "verdict": "Consiglio Tattico: I profili selezionati offrono il miglior compromesso tra titolarità confermata e surplus di valore VORP."
     })
@@ -2571,6 +2603,18 @@ HTML_TEMPLATE = """
                     </button>
                 </div>
 
+                <!-- AI Engine Diagnostic Bar -->
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; background:rgba(15,23,42,0.65); padding:6px 10px; border-radius:8px; border:1px solid var(--border);">
+                    <div style="display:flex; align-items:center; gap:6px; min-width:0; overflow:hidden;">
+                        <span id="aiEngineStatusDot" class="status-dot dot-yellow" style="flex-shrink:0;"></span>
+                        <span style="font-size:0.75rem; color:var(--text-muted); flex-shrink:0;">Motore:</span>
+                        <span id="aiActiveEngineLabel" style="font-size:0.78rem; font-weight:800; color:var(--primary); white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">Verifica in corso...</span>
+                    </div>
+                    <button class="btn-secondary" onclick="openAIDiagnosticsModal()" style="width:auto; padding:3px 8px; font-size:0.70rem; font-weight:700; flex-shrink:0; margin-left:6px;">
+                        🔍 Diagnostica
+                    </button>
+                </div>
+
                 <!-- Chat Quick Chips -->
                 <div class="pills" style="margin-bottom:10px;">
                     <div class="ai-pill" onclick="setAIQuery('Analizza la mia squadra e dimmi cosa manca')">Diagnosi Rosa</div>
@@ -3049,6 +3093,48 @@ HTML_TEMPLATE = """
         </div>
     </div>
 
+    <!-- AI COPILOT DIAGNOSTICS MODAL -->
+    <div id="aiDiagnosticsModal" class="modal-backdrop">
+        <div class="modal-box" style="max-width:480px;">
+            <div class="modal-title">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span>Diagnostica AI Copilot</span>
+                    <span id="modalAiBadge" class="brand-tag">STATUS</span>
+                </div>
+                <button style="background:transparent; border:none; color:var(--text-muted); font-size:1.2rem; cursor:pointer;" onclick="closeAIDiagnosticsModal()">✕</button>
+            </div>
+
+            <div style="margin-bottom:12px; font-size:0.80rem; color:var(--text-muted); line-height:1.4;">
+                Qui puoi verificare quale motore AI sta alimentando le risposte e configurare le API gratuite (Groq o Gemini) su Vercel a costo zero.
+            </div>
+
+            <div id="aiDiagStatusBox" style="background:#0b111e; border:1px solid var(--border); border-radius:8px; padding:10px 12px; margin-bottom:12px;">
+                <div style="font-size:0.75rem; color:var(--text-muted); font-weight:700; margin-bottom:6px;">MOTORE ATTIVO CORRENTE:</div>
+                <div id="diagActiveEngine" style="font-size:0.95rem; font-weight:800; color:var(--primary); margin-bottom:6px;">-</div>
+                <div id="diagActiveEngineDesc" style="font-size:0.74rem; color:var(--text-muted);">-</div>
+            </div>
+
+            <div style="font-size:0.78rem; font-weight:700; color:var(--text-main); margin-bottom:8px;">STATO PROVIDER DISPONIBILI:</div>
+            <div id="aiProvidersList" style="display:flex; flex-direction:column; gap:6px; margin-bottom:14px;"></div>
+
+            <div style="background:rgba(255,45,117,0.06); border:1px solid rgba(255,45,117,0.25); border-radius:8px; padding:10px; margin-bottom:14px;">
+                <div style="font-size:0.75rem; font-weight:800; color:var(--primary); margin-bottom:4px;">💡 Come attivare Groq Free (0$) su Vercel:</div>
+                <div style="font-size:0.72rem; color:var(--text-muted); line-height:1.4;">
+                    1. Crea una chiave gratis su <a href="https://console.groq.com/keys" target="_blank" style="color:var(--primary); font-weight:700;">console.groq.com</a> (nessuna carta richiesta).<br>
+                    2. Nel tuo pannello Vercel &rarr; <i>Settings &rarr; Environment Variables</i>.<br>
+                    3. Aggiungi la variabile: <b>GROQ_API_KEY</b> = <code>gsk_...</code>.<br>
+                    4. Il bot passerà istantaneamente a <b>Llama 3.3 70B</b> gratis con risposte complete e veloci.
+                </div>
+            </div>
+
+            <div style="display:flex; gap:8px;">
+                <button class="btn btn-secondary" style="width:40%;" onclick="closeAIDiagnosticsModal()">Chiudi</button>
+                <button class="btn btn-primary" style="width:60%;" id="btnTestAI" onclick="testAIConnection()">Test Connessione Live</button>
+            </div>
+            <div id="testAIResult" style="margin-top:8px; font-size:0.75rem; text-align:center; display:none;"></div>
+        </div>
+    </div>
+
     <!-- Bottom Navigation -->
     <nav class="bottom-nav">
         <button class="nav-item" id="botNav-draft" onclick="switchTab('draft')" style="display:none;">
@@ -3388,6 +3474,7 @@ HTML_TEMPLATE = """
         async function init() {
             await fetchState();
             await fetchPlayers();
+            fetchAIStatus();
             updateAdminUI();
             updateProfileDisplay();
             renderTeamSelect();
@@ -3787,20 +3874,69 @@ HTML_TEMPLATE = """
 
         function formatMarkdownText(text) {
             if (!text) return '';
-            let formatted = escapeHTML(text);
-            formatted = formatted.replace(/\\*\\*(.*?)\\*\\*/g, '<b>$1</b>');
-            formatted = formatted.replace(/\\*(.*?)\\*/g, '<i>$1</i>');
-            formatted = formatted.replace(/\\n\\n/g, '<br><br>');
-            formatted = formatted.replace(/\\n- /g, '<br>&bull; ');
-            formatted = formatted.replace(/\\n/g, '<br>');
+            let raw = escapeHTML(text);
+
+            // 1. Process Markdown Tables (| col1 | col2 |)
+            const lines = raw.split('\n');
+            let inTable = false;
+            let tableHtml = '';
+            let processedLines = [];
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (line.startsWith('|') && line.endsWith('|')) {
+                    const cells = line.slice(1, -1).split('|').map(c => c.trim());
+                    // Skip separator row (|---|---|)
+                    if (cells.every(c => /^:?-+:?$/.test(c))) {
+                        continue;
+                    }
+                    if (!inTable) {
+                        inTable = true;
+                        tableHtml = '<div style="overflow-x:auto; margin:8px 0;"><table class="ai-table" style="width:100%; border-collapse:collapse; font-size:0.80rem; text-align:left;">';
+                        tableHtml += '<thead><tr style="border-bottom:1.5px solid var(--border); background:rgba(255,45,117,0.12); color:var(--text-main);">';
+                        cells.forEach(c => { tableHtml += `<th style="padding:6px 8px; font-weight:800;">${c}</th>`; });
+                        tableHtml += '</tr></thead><tbody>';
+                    } else {
+                        tableHtml += '<tr style="border-bottom:1px solid rgba(255,255,255,0.06);">';
+                        cells.forEach(c => { tableHtml += `<td style="padding:5px 8px;">${c}</td>`; });
+                        tableHtml += '</tr>';
+                    }
+                } else {
+                    if (inTable) {
+                        tableHtml += '</tbody></table></div>';
+                        processedLines.push(tableHtml);
+                        inTable = false;
+                        tableHtml = '';
+                    }
+                    processedLines.push(line);
+                }
+            }
+            if (inTable) {
+                tableHtml += '</tbody></table></div>';
+                processedLines.push(tableHtml);
+            }
+
+            let formatted = processedLines.join('\n');
+            // Headers
+            formatted = formatted.replace(/^### (.*$)/gim, '<h4 style="color:var(--primary); font-size:0.95rem; margin:10px 0 4px 0;">$1</h4>');
+            formatted = formatted.replace(/^## (.*$)/gim, '<h3 style="color:var(--text-main); font-size:1.02rem; margin:12px 0 6px 0;">$1</h3>');
+            // Bold & Italic
+            formatted = formatted.replace(new RegExp('\\*\\*(.*?)\\*\\*', 'g'), '<b style="color:var(--text-main);">$1</b>');
+            formatted = formatted.replace(new RegExp('\\*(.*?)\\*', 'g'), '<i style="color:var(--text-muted);">$1</i>');
+            // Bullet Points
+            formatted = formatted.replace(new RegExp('^\\s*-\\s+(.*$)', 'gim'), '<div style="display:flex; gap:6px; margin-bottom:3px;"><span style="color:var(--primary);">&bull;</span><span>$1</span></div>');
+            // Spacing
+            formatted = formatted.replace(/\n\n+/g, '<div style="height:8px;"></div>');
+            formatted = formatted.replace(/\n/g, '<br>');
             return formatted;
         }
 
         function renderAIChatContent(data) {
             if (!data) return 'Nessuna risposta disponibile.';
+            const engineTag = `<div style="margin-top:8px; padding-top:6px; border-top:1px dashed rgba(255,255,255,0.08); font-size:0.68rem; color:var(--text-muted); display:flex; justify-content:space-between; align-items:center;"><span>Fonte: <b style="color:var(--primary);">${data.engine || 'Regole Tattiche Offline'}</b></span><span>${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span></div>`;
 
             if (data.type === 'llm_chat') {
-                return `<div>${formatMarkdownText(data.text)}</div>`;
+                return `<div>${formatMarkdownText(data.text)}${engineTag}</div>`;
             }
 
             if (data.type === 'roster_diagnostic') {
@@ -3820,6 +3956,7 @@ HTML_TEMPLATE = """
                         <div style="background:rgba(56,189,248,0.08); border-left:3px solid var(--primary); padding:8px 10px; border-radius:4px; font-size:0.85rem;">
                             ${data.verdict}
                         </div>
+                        ${engineTag}
                     </div>
                 `;
             }
@@ -3847,6 +3984,7 @@ HTML_TEMPLATE = """
                         <div style="background:rgba(56,189,248,0.08); border-left:3px solid var(--primary); padding:8px 10px; border-radius:4px; font-size:0.85rem;">
                             ${formatMarkdownText(data.verdict)}
                         </div>
+                        ${engineTag}
                     </div>
                 `;
             }
@@ -3879,6 +4017,7 @@ HTML_TEMPLATE = """
                         <button class="btn btn-secondary" style="padding:6px 12px; font-size:0.82rem;" onclick="openTargetModal('${p.name.replace(/'/g, "\\\\'")}')">
                             + Aggiungi ai Miei Target
                         </button>
+                        ${engineTag}
                     </div>
                 `;
             }
@@ -3905,11 +4044,106 @@ HTML_TEMPLATE = """
                         <div style="background:rgba(16,185,129,0.08); border-left:3px solid var(--success); padding:8px 10px; border-radius:4px; font-size:0.85rem;">
                             ${formatMarkdownText(data.verdict)}
                         </div>
+                        ${engineTag}
                     </div>
                 `;
             }
 
-            return formatMarkdownText(data.verdict || JSON.stringify(data));
+            return `<div>${formatMarkdownText(data.verdict || JSON.stringify(data))}${engineTag}</div>`;
+        }
+
+        async function fetchAIStatus() {
+            try {
+                const res = await fetch('/api/ai_status');
+                const diag = await res.json();
+                const dot = document.getElementById('aiEngineStatusDot');
+                const lbl = document.getElementById('aiActiveEngineLabel');
+                if (diag.has_llm) {
+                    if (dot) dot.className = 'status-dot dot-green';
+                    if (lbl) {
+                        lbl.textContent = diag.active_engine;
+                        lbl.style.color = 'var(--success)';
+                    }
+                } else {
+                    if (dot) dot.className = 'status-dot dot-yellow';
+                    if (lbl) {
+                        lbl.textContent = 'Fallback Matematico (Nessuna API Key)';
+                        lbl.style.color = 'var(--gold)';
+                    }
+                }
+                return diag;
+            } catch(e) {
+                return null;
+            }
+        }
+
+        async function openAIDiagnosticsModal() {
+            const diag = await fetchAIStatus();
+            const modal = document.getElementById('aiDiagnosticsModal');
+            if (!modal || !diag) return;
+
+            document.getElementById('diagActiveEngine').textContent = diag.active_engine || 'Nessuno';
+            document.getElementById('diagActiveEngineDesc').textContent = diag.has_llm 
+                ? 'LLM Cloud attivo: le risposte sono generate con intelligenza artificiale conversazionale.' 
+                : 'Attualmente attivo il motore a regole locali: riconosce confronti, schede giocatore, formazioni e diagnosi, ma non genera risposte libere complesse.';
+
+            const badge = document.getElementById('modalAiBadge');
+            if (badge) {
+                badge.textContent = diag.has_llm ? 'ONLINE' : 'OFFLINE MODE';
+                badge.style.color = diag.has_llm ? 'var(--success)' : 'var(--gold)';
+            }
+
+            const list = document.getElementById('aiProvidersList');
+            if (list && diag.providers) {
+                list.innerHTML = Object.entries(diag.providers).map(([k, p]) => `
+                    <div style="background:#0b111e; border:1px solid var(--border); border-radius:6px; padding:8px 10px; display:flex; justify-content:space-between; align-items:center;">
+                        <div>
+                            <div style="font-weight:700; font-size:0.82rem; color:var(--text-main);">${p.name}</div>
+                            <div style="font-size:0.70rem; color:var(--text-muted);">Env Vercel: <code>${p.env_var}</code></div>
+                        </div>
+                        <span class="badge ${p.configured ? 'badge-D' : 'badge-P'}" style="font-size:0.72rem;">
+                            ${p.configured ? '✓ Configurato' : 'Non configurato'}
+                        </span>
+                    </div>
+                `).join('');
+            }
+
+            document.getElementById('testAIResult').style.display = 'none';
+            modal.classList.add('active');
+        }
+
+        function closeAIDiagnosticsModal() {
+            const modal = document.getElementById('aiDiagnosticsModal');
+            if (modal) modal.classList.remove('active');
+        }
+
+        async function testAIConnection() {
+            const btn = document.getElementById('btnTestAI');
+            const resBox = document.getElementById('testAIResult');
+            if (btn) btn.disabled = true;
+            if (resBox) {
+                resBox.style.display = 'block';
+                resBox.innerHTML = '<span style="color:var(--text-muted);">Ping live in corso...</span>';
+            }
+
+            const t0 = performance.now();
+            try {
+                const res = await fetch('/api/ai_query', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ prompt: 'Ping test di connettività', profile_id: activeProfileId })
+                });
+                const data = await res.json();
+                const latency = Math.round(performance.now() - t0);
+                if (resBox) {
+                    resBox.innerHTML = `<span style="color:var(--success); font-weight:700;">✓ Test Riuscito (${latency}ms)</span><br><span style="color:var(--text-muted);">Motore: ${data.engine || 'Regole Tattiche'}</span>`;
+                }
+            } catch(e) {
+                if (resBox) {
+                    resBox.innerHTML = `<span style="color:var(--danger); font-weight:700;">✕ Errore di connessione: ${e.message}</span>`;
+                }
+            }
+            if (btn) btn.disabled = false;
         }
 
         /* ─────────────────────────────────────────────────────────────

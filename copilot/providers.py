@@ -194,3 +194,47 @@ def get_copilot_provider() -> CopilotProvider | None:
         return available_providers[0]
 
     return CascadeProvider(available_providers)
+
+
+def get_copilot_diagnostics() -> dict:
+    """Returns diagnostic status of all configured AI engines."""
+    is_vercel = bool(os.environ.get("VERCEL"))
+    groq_key = bool(os.environ.get("GROQ_API_KEY"))
+    gemini_key = bool(os.environ.get("GEMINI_API_KEY"))
+    openai_key = bool(os.environ.get("LLM_API_KEY") or os.environ.get("OPENAI_API_KEY"))
+    ollama_url = os.environ.get("LLM_BASE_URL")
+
+    provider = get_copilot_provider()
+    active_engine = provider.engine_name if provider else "Fallback Matematico Offline (Nessun LLM attivo)"
+
+    return {
+        "is_vercel": is_vercel,
+        "active_engine": active_engine,
+        "has_llm": provider is not None,
+        "providers": {
+            "groq": {
+                "configured": groq_key,
+                "name": "Groq Cloud (Llama 3.3 / Llama 3.1)",
+                "env_var": "GROQ_API_KEY",
+                "status": "Attivo" if groq_key else "Non configurato (aggiungi GROQ_API_KEY)"
+            },
+            "gemini": {
+                "configured": gemini_key,
+                "name": "Google Gemini Free Tier",
+                "env_var": "GEMINI_API_KEY",
+                "status": "Attivo" if gemini_key else "Non configurato (aggiungi GEMINI_API_KEY)"
+            },
+            "openai_compat": {
+                "configured": openai_key,
+                "name": "OpenAI / Custom API",
+                "env_var": "LLM_API_KEY",
+                "status": "Attivo" if openai_key else "Non configurato"
+            },
+            "ollama": {
+                "configured": bool(ollama_url and not is_vercel),
+                "name": "Ollama Locale (11434)",
+                "env_var": "LLM_BASE_URL",
+                "status": "Non supportato su Vercel (solo localhost)" if is_vercel else ("Attivo" if ollama_url else "Disattivato")
+            }
+        }
+    }
