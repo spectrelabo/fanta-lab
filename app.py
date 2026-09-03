@@ -476,33 +476,6 @@ def get_initial_state():
     }
 
 
-def load_state():
-    """Load auction state from file. Accepts any valid structure regardless of budget/slot values."""
-    if os.path.exists(STATE_PATH):
-        try:
-            with open(STATE_PATH, "r", encoding="utf-8") as f:
-                state = json.load(f)
-                # Validate structure (not specific values — any budget/slot combo is valid)
-                if isinstance(state.get("teams"), list) and isinstance(state.get("assigned_players"), dict):
-                    # Ensure roster_structure exists (backfill for old states)
-                    if "roster_structure" not in state:
-                        state["roster_structure"] = load_league_settings()["roster_slots"]
-                    if "budget_total" not in state:
-                        state["budget_total"] = load_league_settings()["budget"]
-                    return state
-        except Exception:
-            pass
-    return get_initial_state()
-
-
-def save_state(state):
-    try:
-        with open(STATE_PATH, "w", encoding="utf-8") as f:
-            json.dump(state, f, ensure_ascii=False, indent=2)
-    except Exception:
-        pass
-
-
 def recalculate_team_metrics(team, budget_total, roster_structure=None):
     """Recomputes counts, department expenditures, remaining funds and allowable max bid."""
     if roster_structure is None:
@@ -511,7 +484,7 @@ def recalculate_team_metrics(team, budget_total, roster_structure=None):
     counts = {"P": 0, "D": 0, "C": 0, "A": 0}
     spent_by_role = {"P": 0, "D": 0, "C": 0, "A": 0}
     spent = 0
-    for p in team["roster"]:
+    for p in team.get("roster", []):
         r = p.get("role", "C")
         p_price = int(p.get("price", 1))
         counts[r] = counts.get(r, 0) + 1
@@ -539,6 +512,133 @@ def recalculate_team_metrics(team, budget_total, roster_structure=None):
     team["slots_left"] = slots_left
     team["total_slots_left"] = total_slots_left
     team["max_bid"] = max_bid
+
+
+def load_state():
+    """
+    Load auction state from file and automatically synchronize with current league settings:
+    - Team names and is_me flags always match league_settings.json
+    - Budget total and roster slots are reconciled
+    - Team financial metrics are recomputed
+    """
+    settings = load_league_settings()
+    settings_budget = settings.get("budget", DEFAULT_BUDGET)
+    settings_slots = settings.get("roster_slots", DEFAULT_ROSTER_SLOTS)
+    settings_teams = settings.get("teams", DEFAULT_TEAMS)
+
+    if os.path.exists(STATE_PATH):
+        try:
+            with open(STATE_PATH, "r", encoding="utf-8") as f:
+                state = json.load(f)
+                if isinstance(state.get("teams"), list) and isinstance(state.get("assigned_players"), dict):
+                    state["budget_total"] = settings_budget
+                    state["roster_structure"] = dict(settings_slots)
+
+                    # Synchronize team names & is_me from league settings
+                    teams_map = {t["id"]: t for t in settings_teams}
+                    updated_teams = []
+                    for i, st_team in enumerate(state.get("teams", [])):
+                        tid = st_team.get("id", i + 1)
+                        if tid in teams_map:
+                            st_team["name"] = teams_map[tid]["name"]
+                            st_team["is_me"] = teams_map[tid].get("is_me", False)
+                        elif i < len(settings_teams):
+                            st_team["name"] = settings_teams[i]["name"]
+                            st_team["is_me"] = settings_teams[i].get("is_me", False)
+
+                        recalculate_team_metrics(st_team, settings_budget, settings_slots)
+                        updated_teams.append(st_team)
+
+                    state["teams"] = updated_teams
+                    return state
+        except Exception:
+            pass
+    return get_initial_state()
+
+
+def save_state(state):
+    try:
+        with open(STATE_PATH, "w", encoding="utf-8") as f:
+            json.dump(state, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+_PRICING_CACHE = {}
+
+
+def get_dynamic_fair_prices(df, budget_total, roster_slots, n_teams):
+    """
+    Computes custom fair prices and VORP baselines calibrated specifically to:
+      - custom budget (e.g. 300, 500, 1000)
+      - custom roster slots (e.g. 3-10-10-6, 4-9-9-7)
+      - custom number of teams (e.g. 8, 10, 12)
+    Uses empirical budget shares, power-law scarcity exponents and replacement-level analysis.
+    Results are cached in memory for high-performance response times.
+    """
+    cache_key = (int(budget_total), tuple(sorted(roster_slots.items())), int(n_teams))
+    if cache_key in _PRICING_CACHE:
+        return _PRICING_CACHE[cache_key]
+
+    budget_shares = {"P": 0.09, "D": 0.18, "C": 0.33, "A": 0.40}
+    scarcity_exp = {"P": 1.20, "D": 1.05, "C": 1.16, "A": 1.02}
+
+    # 1. Positional replacement baselines
+    baselines = {}
+    for role, slots in roster_slots.items():
+        total_drafted = n_teams * slots
+        role_df = df[df["role"] == role].sort_values("predicted_pts_p50", ascending=False).reset_index(drop=True)
+        if len(role_df) > total_drafted:
+            base = role_df.iloc[total_drafted]["predicted_pts_p50"]
+        elif len(role_df) > 0:
+            base = role_df.iloc[-1]["predicted_pts_p50"] * 0.70
+        else:
+            base = 50.0
+        baselines[role] = float(base)
+
+    if "adj_market_fvm" in df.columns:
+        adj_fvm_series = df["adj_market_fvm"].astype(float)
+    else:
+        adj_fvm_series = df.get("FVM_1000", df.get("prezzo_fair_1000", 10.0)).astype(float)
+
+    fair_prices = {}
+    vorp_dict = {}
+
+    for role in ["P", "D", "C", "A"]:
+        role_mask = df["role"] == role
+        role_df = df[role_mask]
+        gamma = scarcity_exp.get(role, 1.10)
+
+        role_fvm_sub = adj_fvm_series[role_mask]
+        role_fvm_powered = float((role_fvm_sub ** gamma).sum())
+
+        role_slots = roster_slots.get(role, 8)
+        role_total_budget = n_teams * (budget_total * budget_shares.get(role, 0.25))
+        role_reserve_pool = n_teams * role_slots * 1  # 1 credit minimum reserve per slot
+        role_surplus_pool = max(0.0, role_total_budget - role_reserve_pool)
+
+        role_base = baselines.get(role, 100.0)
+
+        for idx, row in role_df.iterrows():
+            p_name = row["player"]
+            pts = float(row.get("predicted_pts_p50", 150.0))
+            vorp = max(0.0, pts - role_base)
+            vorp_dict[p_name] = round(vorp, 1)
+
+            fvm_val = float(adj_fvm_series[idx]) if idx in adj_fvm_series.index else 10.0
+            if role_fvm_powered > 0 and fvm_val > 0:
+                price = 1.0 + (role_surplus_pool / n_teams) * ((fvm_val ** gamma) / role_fvm_powered * n_teams)
+            else:
+                price = 1.0
+            fair_prices[p_name] = max(1, int(round(price)))
+
+    result = {
+        "fair_prices": fair_prices,
+        "vorp": vorp_dict,
+        "baselines": baselines
+    }
+    _PRICING_CACHE[cache_key] = result
+    return result
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -605,7 +705,10 @@ def api_save_settings():
         save_state(new_state)
         return jsonify({"success": True, "reset": True, "message": "Impostazioni salvate. Asta resettata per nuova configurazione."})
 
-    return jsonify({"success": True, "reset": False, "message": "Impostazioni salvate."})
+    # Immediately sync team names and settings into state file
+    state = load_state()
+    save_state(state)
+    return jsonify({"success": True, "reset": False, "message": "Impostazioni salvate e squadre aggiornate."})
 
 
 @app.route("/api/auth_admin", methods=["POST"])
@@ -674,7 +777,16 @@ def api_players():
     assigned = state.get("assigned_players", {})
     favorites = set(state.get("favorites", []))
 
-    budget_scale = state.get("budget_total", DEFAULT_BUDGET) / 1000.0
+    league_settings = load_league_settings()
+    budget_total = state.get("budget_total", league_settings.get("budget", DEFAULT_BUDGET))
+    roster_structure = state.get("roster_structure", league_settings.get("roster_slots", DEFAULT_ROSTER_SLOTS))
+    n_teams = max(2, len(state.get("teams", [])))
+
+    pricing_data = get_dynamic_fair_prices(df, budget_total, roster_structure, n_teams)
+    custom_fair_prices = pricing_data["fair_prices"]
+    custom_vorp = pricing_data["vorp"]
+
+    budget_scale = budget_total / 1000.0
     market_info = compute_market_inflation(df, state)
     inflation_factor = market_info["index"]
 
@@ -698,8 +810,9 @@ def api_players():
             continue
 
         fair_1000 = int(row.get("prezzo_fair_1000", 1))
-        fair_scaled = max(1, int(round(fair_1000 * budget_scale)))
+        fair_scaled = custom_fair_prices.get(p_name, max(1, int(round(fair_1000 * budget_scale))))
         fair_live = max(1, int(round(fair_scaled * inflation_factor)))
+        vorp_val = custom_vorp.get(p_name, float(row.get("vorp_points", 0)))
 
         assignment_info = assigned.get(p_name)
         records.append({
@@ -718,7 +831,7 @@ def api_players():
             "pts_floor": float(row.get("predicted_pts_p10", 0)),
             "pts_ceil": float(row.get("predicted_pts_p90", 0)),
             "pts_spread": float(row.get("pts_volatility_spread", 0)),
-            "vorp": float(row.get("vorp_points", 0)),
+            "vorp": vorp_val,
             "injury_days": int(row.get("giorni_infortunio_3y", 0)),
             "injury_malus": float(row.get("malus_infortuni", 0)),
             "fascia": int(row["fascia"]),
@@ -738,7 +851,10 @@ def api_players():
         "tactical_presets": TACTICAL_PRESETS,
         "default_tactic": DEFAULT_TACTIC_ID,
         "market_index": market_info,
-        "budget_scale": budget_scale
+        "budget_scale": budget_scale,
+        "league_budget": budget_total,
+        "roster_structure": roster_structure,
+        "n_teams": n_teams
     })
 
 
@@ -913,7 +1029,18 @@ def api_ai_query():
     # ─────────────────────────────────────────────────────────────
     try:
         from copilot import get_copilot_response
-        unassigned_df = df[~df['player'].isin(assigned.keys())]
+        league_settings = load_league_settings()
+        budget_total = state.get("budget_total", league_settings.get("budget", DEFAULT_BUDGET))
+        roster_structure = state.get("roster_structure", league_settings.get("roster_slots", DEFAULT_ROSTER_SLOTS))
+        n_teams = max(2, len(state.get("teams", [])))
+
+        pricing_data = get_dynamic_fair_prices(df, budget_total, roster_structure, n_teams)
+        custom_fair_prices = pricing_data["fair_prices"]
+        custom_vorp = pricing_data["vorp"]
+
+        unassigned_df = df[~df['player'].isin(assigned.keys())].copy()
+        unassigned_df['fair_custom'] = unassigned_df['player'].map(custom_fair_prices).fillna(1).astype(int)
+        unassigned_df['vorp_custom'] = unassigned_df['player'].map(custom_vorp).fillna(0.0).astype(float)
 
         # Dynamic contextual sampling based on user query
         sample_df = unassigned_df.copy()
@@ -940,17 +1067,20 @@ def api_ai_query():
 
         # 3. Low-cost / "a 1" / budget filtering
         is_low_cost = any(term in prompt_lower for term in ["a 1", "1 credito", "1 cr", "low cost", "scommess", "economici", "risparmi", "prezzo basso", "meno di 5", "sotto i 5"])
+        low_cost_threshold = max(3, int(budget_total * 0.02))
         if is_low_cost:
-            sample_df = sample_df[sample_df['prezzo_fair_1000'] <= 10].sort_values(
-                ['is_starter_2627', 'predicted_pts_p50', 'vorp_points'], ascending=[False, False, False]
+            sample_df = sample_df[sample_df['fair_custom'] <= low_cost_threshold].sort_values(
+                ['is_starter_2627', 'predicted_pts_p50', 'vorp_custom'], ascending=[False, False, False]
             )
         else:
-            sample_df = sample_df.sort_values(['is_starter_2627', 'vorp_points'], ascending=[False, False])
+            sample_df = sample_df.sort_values(['is_starter_2627', 'vorp_custom'], ascending=[False, False])
 
         if sample_df.empty:
-            sample_df = unassigned_df.sort_values('vorp_points', ascending=False)
+            sample_df = unassigned_df.sort_values('vorp_custom', ascending=False)
 
-        top_sample = sample_df.head(35)[['player', 'role', 'team', 'predicted_pts_p50', 'prezzo_fair_1000', 'vorp_points', 'is_starter_2627']].to_dict(orient='records')
+        top_sample = sample_df.head(35)[['player', 'role', 'team', 'predicted_pts_p50', 'fair_custom', 'vorp_custom', 'is_starter_2627']].rename(
+            columns={'fair_custom': 'prezzo_fair_1000', 'vorp_custom': 'vorp_points'}
+        ).to_dict(orient='records')
         team_context = {
             "name": team["name"],
             "remaining": team["remaining"],
@@ -2493,6 +2623,12 @@ HTML_TEMPLATE = """
                         <span class="brand-tag" style="font-size:0.7rem; padding:2px 7px; background:rgba(255,45,117,0.15); border:1px solid rgba(255,45,117,0.35); color:var(--primary); font-weight:800; border-radius:4px;">{{ bot_badge }}</span>
                     </div>
 
+                    <!-- Dynamic League Config Badge -->
+                    <div id="headerLeagueBadge" class="market-pill" onclick="openLeagueSettingsModal()" title="Configurazione Lega (Clicca per modificare)" style="cursor:pointer; background:rgba(56,189,248,0.1); border:1px solid rgba(56,189,248,0.3);">
+                        <span class="status-dot dot-green"></span>
+                        <span id="headerLeagueBadgeText" style="color:var(--primary); font-weight:800;">Lega</span>
+                    </div>
+
                     <!-- Dynamic Market Inflation Badge -->
                     <div id="headerMarketBadge" class="market-pill" onclick="showInflationInfoModal()" title="Clicca per i dettagli dell'inflazione">
                         <span id="marketBadgeDot" class="status-dot dot-blue"></span>
@@ -2525,7 +2661,7 @@ HTML_TEMPLATE = """
             <div class="card">
                 <div class="card-header">
                     <div class="card-title">Chiamata & Aggiudicazione Live</div>
-                    <div style="font-size:0.75rem; color:var(--text-muted);">Assegnati: <span id="draftedCount" style="color:var(--success); font-weight:700;">0</span>/290</div>
+                    <div style="font-size:0.75rem; color:var(--text-muted);">Assegnati: <span id="draftedCount" style="color:var(--success); font-weight:700;">0</span>/<span id="totalLeagueSlotsLabel">290</span></div>
                 </div>
 
                 <input type="text" id="playerSearch" placeholder="Cerca calciatore per nome o squadra..." autocomplete="off">
@@ -2888,10 +3024,10 @@ HTML_TEMPLATE = """
         <div id="tab-listone" class="tab-content">
             <div class="pills" id="rolePills">
                 <div class="pill active" onclick="setRoleFilter('ALL')">Tutti</div>
-                <div class="pill" onclick="setRoleFilter('P')">Portieri (4)</div>
-                <div class="pill" onclick="setRoleFilter('D')">Difensori (9)</div>
-                <div class="pill" onclick="setRoleFilter('C')">Centrocampisti (9)</div>
-                <div class="pill" onclick="setRoleFilter('A')">Attaccanti (7)</div>
+                <div class="pill" onclick="setRoleFilter('P')">Portieri <span id="pillRoleCount_P">(4)</span></div>
+                <div class="pill" onclick="setRoleFilter('D')">Difensori <span id="pillRoleCount_D">(9)</span></div>
+                <div class="pill" onclick="setRoleFilter('C')">Centrocampisti <span id="pillRoleCount_C">(9)</span></div>
+                <div class="pill" onclick="setRoleFilter('A')">Attaccanti <span id="pillRoleCount_A">(7)</span></div>
             </div>
 
             <div class="pills" id="fasciaPills">
@@ -2902,8 +3038,16 @@ HTML_TEMPLATE = """
                 <div class="pill" onclick="setFasciaFilter('4')">4ª Fascia Scommesse</div>
             </div>
 
-            <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
+            <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap; align-items:center;">
                 <input type="text" id="listSearch" placeholder="Cerca calciatore o squadra..." oninput="renderListone()" style="margin-bottom:0; flex:1; min-width:160px;">
+                <select id="listSortBy" onchange="renderListone()" style="width:auto; margin-bottom:0; padding:8px 12px; font-size:0.82rem; font-weight:700; background:#0f172a; color:var(--text-main); border:1px solid var(--border); border-radius:6px; cursor:pointer;" title="Ordina calciatori">
+                    <option value="best" selected>⭐ Migliori (Score & VORP)</option>
+                    <option value="fair_desc">💰 Prezzo Fair (Più alti)</option>
+                    <option value="fair_asc">📉 Prezzo Fair (Più bassi / 1 cr)</option>
+                    <option value="pts_desc">🎯 Punti Attesi P50</option>
+                    <option value="vorp_desc">🚀 VORP (+ Valore)</option>
+                    <option value="alpha">🔤 Alfabetico (A-Z)</option>
+                </select>
                 <button class="btn-secondary" id="filterAvailableOnlyBtn" onclick="toggleFilterAvailableOnly()" style="width:auto; padding:0 12px; white-space:nowrap; font-size:0.8rem; font-weight:700;">
                     Solo Svincolati
                 </button>
@@ -3582,19 +3726,51 @@ HTML_TEMPLATE = """
             renderListone();
         }
 
+        let leagueBudget = 1000;
+        let leagueRosterStructure = { P: 4, D: 9, C: 9, A: 7 };
+
         async function fetchPlayers() {
             const res = await fetch('/api/players');
             const data = await res.json();
-            allPlayers = data.players;
+            allPlayers = data.players || [];
             slotFramework = data.slot_framework || slotFramework;
             tacticalPresets = data.tactical_presets || tacticalPresets;
             if (data.market_index) updateMarketBadge(data.market_index);
             if (data.budget_scale) activeBudgetScale = data.budget_scale;
+            if (data.league_budget) leagueBudget = data.league_budget;
+            if (data.roster_structure) leagueRosterStructure = data.roster_structure;
+            updateLeagueBadge();
+            updateHeader();
+        }
+
+        function updateLeagueBadge() {
+            const badgeText = document.getElementById('headerLeagueBadgeText');
+            const rs = auctionState.roster_structure || leagueRosterStructure || {P:4, D:9, C:9, A:7};
+            const b = auctionState.budget_total || leagueBudget || 1000;
+            const totalSlots = (rs.P || 0) + (rs.D || 0) + (rs.C || 0) + (rs.A || 0) || 29;
+            if (badgeText) {
+                badgeText.textContent = `${b} cr | ${rs.P}-${rs.D}-${rs.C}-${rs.A} (${totalSlots} slot)`;
+            }
+
+            const pillP = document.getElementById('pillRoleCount_P');
+            const pillD = document.getElementById('pillRoleCount_D');
+            const pillC = document.getElementById('pillRoleCount_C');
+            const pillA = document.getElementById('pillRoleCount_A');
+            if (pillP) pillP.textContent = `(${rs.P})`;
+            if (pillD) pillD.textContent = `(${rs.D})`;
+            if (pillC) pillC.textContent = `(${rs.C})`;
+            if (pillA) pillA.textContent = `(${rs.A})`;
         }
 
         function updateHeader() {
             const drafted = Object.keys(auctionState.assigned_players || {}).length;
-            document.getElementById('draftedCount').textContent = drafted;
+            const draftedEl = document.getElementById('draftedCount');
+            if (draftedEl) draftedEl.textContent = drafted;
+            const rs = auctionState.roster_structure || leagueRosterStructure || {P:4, D:9, C:9, A:7};
+            const slotsPerTeam = (rs.P || 0) + (rs.D || 0) + (rs.C || 0) + (rs.A || 0) || 29;
+            const nTeams = (auctionState.teams || []).length || 10;
+            const totalSlotsLabel = document.getElementById('totalLeagueSlotsLabel');
+            if (totalSlotsLabel) totalSlotsLabel.textContent = slotsPerTeam * nTeams;
         }
 
         function updateProfileDisplay() {
@@ -3603,8 +3779,9 @@ HTML_TEMPLATE = """
                 document.getElementById('headerProfileName').textContent = team.name;
                 const sideName = document.getElementById('sideProfileName');
                 const sideBudget = document.getElementById('sideProfileBudget');
+                const bTotal = auctionState.budget_total || leagueBudget || 1000;
                 if (sideName) sideName.textContent = team.name;
-                if (sideBudget) sideBudget.textContent = `${team.remaining} cr residui (Max: ${team.max_bid} cr)`;
+                if (sideBudget) sideBudget.textContent = `${team.remaining} cr residui (su ${bTotal} cr | Max: ${team.max_bid} cr)`;
             }
         }
 
@@ -4230,13 +4407,14 @@ HTML_TEMPLATE = """
 
             const targets = loadUserTargets();
             const existing = targets[p.player] || {};
+            const fair = p.price_fair_live || p.price_fair_scaled || p.price_fair_1000;
 
             document.getElementById('targetModalPlayerName').textContent = p.player;
             document.getElementById('targetModalRole').className = 'badge badge-' + p.role;
             document.getElementById('targetModalRole').textContent = p.role;
-            document.getElementById('targetModalFair').textContent = `Fair: ${p.price_fair_1000} cr`;
+            document.getElementById('targetModalFair').textContent = `Fair: ${fair} cr`;
             document.getElementById('targetModalPts').textContent = `Punti Attesi: ${p.pts_exp} pts`;
-            document.getElementById('targetModalMaxPrice').value = existing.max_price || p.price_fair_1000 || 1;
+            document.getElementById('targetModalMaxPrice').value = existing.max_price || fair || 1;
             document.getElementById('targetModalPriority').value = existing.priority || 1;
             document.getElementById('targetModalNotes').value = existing.notes || '';
 
@@ -4309,7 +4487,8 @@ HTML_TEMPLATE = """
                 const isMine = assignment && assignment.team_id === activeProfileId;
 
                 const role = t.role || p.role || 'C';
-                const maxPrice = t.max_price || p.price_fair_1000 || 1;
+                const fair = p.price_fair_live || p.price_fair_scaled || p.price_fair_1000 || 1;
+                const maxPrice = t.max_price || fair || 1;
                 const priority = t.priority || 1;
 
                 if (!isAssigned) {
@@ -4324,6 +4503,7 @@ HTML_TEMPLATE = """
                 targetList.push({
                     ...t,
                     pts_exp: p.pts_exp || 0,
+                    price_fair: fair,
                     price_fair_1000: p.price_fair_1000 || maxPrice,
                     is_assigned: isAssigned,
                     is_mine: isMine,
@@ -4337,14 +4517,15 @@ HTML_TEMPLATE = """
             document.getElementById('targetAvailableCount').textContent = `${availableCount}/${targetNames.length}`;
             document.getElementById('targetCommitmentBadge').textContent = `Totale Top: ${sumTier1} cr`;
 
-            // Update Slot Coverage
-            document.getElementById('targetCoverageP').textContent = `${coverage.P}/4`;
+            // Update Slot Coverage with dynamic league slots
+            const rs = auctionState.roster_structure || leagueRosterStructure || {P:4, D:9, C:9, A:7};
+            document.getElementById('targetCoverageP').textContent = `${coverage.P}/${rs.P || 4}`;
             document.getElementById('targetSpentP').textContent = `${targetSpend.P} cr max`;
-            document.getElementById('targetCoverageD').textContent = `${coverage.D}/9`;
+            document.getElementById('targetCoverageD').textContent = `${coverage.D}/${rs.D || 9}`;
             document.getElementById('targetSpentD').textContent = `${targetSpend.D} cr max`;
-            document.getElementById('targetCoverageC').textContent = `${coverage.C}/9`;
+            document.getElementById('targetCoverageC').textContent = `${coverage.C}/${rs.C || 9}`;
             document.getElementById('targetSpentC').textContent = `${targetSpend.C} cr max`;
-            document.getElementById('targetCoverageA').textContent = `${coverage.A}/7`;
+            document.getElementById('targetCoverageA').textContent = `${coverage.A}/${rs.A || 7}`;
             document.getElementById('targetSpentA').textContent = `${targetSpend.A} cr max`;
 
             // Filter targets by role
@@ -4616,7 +4797,28 @@ HTML_TEMPLATE = """
             const myRosterRole = (myTeam.roster || []).filter(p => p.role === role);
             const myCount = myRosterRole.length;
 
-            const roleSlots = (tactic.slots && tactic.slots[role]) || (slotFramework[role] || []);
+            const rs = auctionState.roster_structure || leagueRosterStructure || {P:4, D:9, C:9, A:7};
+            const targetNumSlots = rs[role] || 8;
+            const rawSlots = (tactic.slots && tactic.slots[role]) || (slotFramework[role] || []);
+
+            let roleSlots = [];
+            if (rawSlots.length >= targetNumSlots) {
+                roleSlots = rawSlots.slice(0, targetNumSlots);
+            } else {
+                roleSlots = [...rawSlots];
+                for (let s = rawSlots.length + 1; s <= targetNumSlots; s++) {
+                    roleSlots.push({
+                        slot: s,
+                        name: `${s}° Slot: Copertura / Profilo a 1 cr`,
+                        target_budget: "1 cr",
+                        max_limit: 2,
+                        fascia: 4
+                    });
+                }
+            }
+
+            const activeBudget = auctionState.budget_total || leagueBudget || 1000;
+            const scaleRatio = activeBudget / 1000.0;
             const container = document.getElementById('strategySlotsContainer');
 
             let html = '';
@@ -4630,17 +4832,22 @@ HTML_TEMPLATE = """
 
                 const availableRole = allPlayers.filter(p => !p.is_assigned && p.role === role);
                 const userTargets = loadUserTargets();
+                const scaledMax = Math.max(1, Math.round(slotCfg.max_limit * scaleRatio));
 
-                // Candidate ranking tailored by role & tactical blueprint
+                // Candidate ranking tailored by role & tactical blueprint with dynamic scaled prices
                 const candidates = availableRole.filter(p => {
-                    if (slotCfg.slot === 1) return p.price_fair_1000 >= (slotCfg.max_limit * 0.45);
-                    if (slotCfg.slot === 2) return p.price_fair_1000 <= (slotCfg.max_limit * 1.35) && p.price_fair_1000 >= 30;
-                    if (slotCfg.slot === 3) return p.price_fair_1000 <= (slotCfg.max_limit * 1.4) && p.price_fair_1000 >= 15;
-                    return p.price_fair_1000 <= slotCfg.max_limit * 2;
+                    const fair = p.price_fair_live || p.price_fair_scaled || p.price_fair_1000;
+                    if (slotCfg.slot === 1) return fair >= Math.max(2, Math.round(scaledMax * 0.40));
+                    if (slotCfg.slot === 2) return fair <= Math.round(scaledMax * 1.35) && fair >= Math.max(2, Math.round(15 * scaleRatio));
+                    if (slotCfg.slot === 3) return fair <= Math.round(scaledMax * 1.4) && fair >= Math.max(1, Math.round(8 * scaleRatio));
+                    return fair <= scaledMax * 2;
                 }).sort((a,b) => {
                     const aTarget = a.player in userTargets ? 1 : 0;
                     const bTarget = b.player in userTargets ? 1 : 0;
                     if (aTarget !== bTarget) return bTarget - aTarget;
+
+                    const aFair = a.price_fair_live || a.price_fair_scaled || a.price_fair_1000;
+                    const bFair = b.price_fair_live || b.price_fair_scaled || b.price_fair_1000;
 
                     if (currentTacticId === 'modificatore_ferro' && role === 'D') {
                         return (b.pts_exp * 1.5 + b.starts_2627 * 5) - (a.pts_exp * 1.5 + a.starts_2627 * 5);
@@ -4649,9 +4856,9 @@ HTML_TEMPLATE = """
                     } else if (currentTacticId === 'moneyball_value') {
                         return (b.surplus_value + b.vorp) - (a.surplus_value + a.vorp);
                     } else {
-                        return b.price_fair_1000 - a.price_fair_1000;
+                        return bFair - aFair;
                     }
-                }).slice(0, 6);
+                }).slice(0, 8);
 
                 let acquiredHtml = '';
                 if (isAcquired) {
@@ -4661,6 +4868,15 @@ HTML_TEMPLATE = """
                             ${acquiredPlayer.player} <small style="color:var(--text-muted); font-size:0.85rem;">(${acquiredPlayer.team} - ${acquiredPlayer.pts_exp} pts | Spesi: ${acquiredPlayer.price} cr)</small>
                         </div>
                     `;
+                }
+
+                // Format scaled budget display
+                let displayTargetBudget = slotCfg.target_budget;
+                if (scaleRatio !== 1.0 && slotCfg.target_budget.includes('-')) {
+                    const parts = slotCfg.target_budget.replace(' cr', '').split('-');
+                    const low = Math.max(1, Math.round(parseInt(parts[0]) * scaleRatio));
+                    const high = Math.max(1, Math.round(parseInt(parts[1]) * scaleRatio));
+                    displayTargetBudget = `${low}-${high} cr`;
                 }
 
                 html += `
@@ -4676,7 +4892,7 @@ HTML_TEMPLATE = """
                             </div>
                             <div style="display:flex; align-items:center; gap:8px;">
                                 <div class="plan-budget-badge">
-                                    Target: ${slotCfg.target_budget}
+                                    Target: ${displayTargetBudget}
                                 </div>
                                 <span style="font-size:0.85rem; color:var(--text-muted); font-weight:800;">${isExpanded ? '▲' : '▼'}</span>
                             </div>
@@ -4688,7 +4904,7 @@ HTML_TEMPLATE = """
                             <div style="margin-top:10px; border-top:1px dashed var(--border); padding-top:10px;">
                                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
                                     <span style="font-size:0.82rem; color:var(--danger); font-weight:800; text-transform:uppercase;">
-                                        TETTO STOP-LOSS: Max ${slotCfg.max_limit} cr
+                                        TETTO STOP-LOSS: Max ${scaledMax} cr
                                     </span>
                                     <span style="font-size:0.78rem; color:var(--text-muted); font-weight:600;">
                                         ${candidates.length} candidati disponibili
@@ -4706,7 +4922,7 @@ HTML_TEMPLATE = """
                                                 <small style="color:var(--text-muted); font-size:0.82rem; flex-shrink:0;">(${c.team})</small>
                                             </div>
                                             <div style="text-align:right; flex-shrink:0;">
-                                                <span style="color:var(--gold); font-weight:800; font-size:1rem;">${c.price_fair_1000} cr</span>
+                                                <span style="color:var(--gold); font-weight:800; font-size:1rem;">${c.price_fair_live || c.price_fair_scaled || c.price_fair_1000} cr</span>
                                                 <span style="color:var(--text-muted); font-size:0.8rem; margin-left:4px;">(${c.pts_exp} pts)</span>
                                             </div>
                                         </div>
@@ -4903,18 +5119,20 @@ HTML_TEMPLATE = """
 
         function renderGlobalOverview() {
             const teams = auctionState.teams || [];
+            const struct = auctionState.roster_structure || leagueRosterStructure || {P:4, D:9, C:9, A:7};
+            const totalSlots = Object.values(struct).reduce((a, b) => a + b, 0);
             const tbody = document.getElementById('overviewTableBody');
             tbody.innerHTML = teams.map(t => {
                 const s = t.spent_by_role || {P:0, D:0, C:0, A:0};
                 return `
                     <tr style="${t.id === activeProfileId ? 'background:rgba(56,189,248,0.08); font-weight:700;' : ''}">
-                        <td><b>${t.name}</b> <small style="color:var(--text-muted)">(${t.roster.length}/29)</small></td>
+                        <td><b>${t.name}</b> <small style="color:var(--text-muted)">(${t.roster.length}/${totalSlots})</small></td>
                         <td style="color:var(--gold); font-weight:800;">${t.remaining}</td>
                         <td style="color:var(--danger); font-weight:800;">${t.max_bid}</td>
-                        <td>${s.P || 0} <small style="color:var(--text-muted)">(${t.counts.P}/4)</small></td>
-                        <td>${s.D || 0} <small style="color:var(--text-muted)">(${t.counts.D}/9)</small></td>
-                        <td>${s.C || 0} <small style="color:var(--text-muted)">(${t.counts.C}/9)</small></td>
-                        <td>${s.A || 0} <small style="color:var(--text-muted)">(${t.counts.A}/7)</small></td>
+                        <td>${s.P || 0} <small style="color:var(--text-muted)">(${t.counts.P}/${struct.P || 4})</small></td>
+                        <td>${s.D || 0} <small style="color:var(--text-muted)">(${t.counts.D}/${struct.D || 9})</small></td>
+                        <td>${s.C || 0} <small style="color:var(--text-muted)">(${t.counts.C}/${struct.C || 9})</small></td>
+                        <td>${s.A || 0} <small style="color:var(--text-muted)">(${t.counts.A}/${struct.A || 7})</small></td>
                     </tr>
                 `;
             }).join('');
@@ -4927,6 +5145,8 @@ HTML_TEMPLATE = """
             const q = (document.getElementById('listSearch')?.value || '').toLowerCase();
             const userTargets = loadUserTargets();
             const assigned = auctionState.assigned_players || {};
+            const activeBudget = auctionState.budget_total || leagueBudget || 1000;
+            const sortBy = document.getElementById('listSortBy')?.value || 'best';
 
             const filtered = allPlayers.filter(p => {
                 const isAssigned = p.is_assigned || (p.player in assigned);
@@ -4936,6 +5156,30 @@ HTML_TEMPLATE = """
                 if (currentFasciaFilter !== 'ALL' && String(p.fascia) !== String(currentFasciaFilter)) return false;
                 if (q && !p.player.toLowerCase().includes(q) && !p.team.toLowerCase().includes(q)) return false;
                 return true;
+            });
+
+            // Sorting logic (Default: Miglior Giocatore come in Scala Slot)
+            filtered.sort((a, b) => {
+                if (sortBy === 'best') {
+                    const aScore = (parseFloat(a.score) || 0) * 12 + (parseFloat(a.vorp) || 0) * 2 + (a.is_starter_2627 ? 15 : 0) + (parseFloat(a.pts_exp) || 0) * 0.1;
+                    const bScore = (parseFloat(b.score) || 0) * 12 + (parseFloat(b.vorp) || 0) * 2 + (b.is_starter_2627 ? 15 : 0) + (parseFloat(b.pts_exp) || 0) * 0.1;
+                    return bScore - aScore;
+                } else if (sortBy === 'fair_desc') {
+                    const aFair = a.price_fair_live || a.price_fair_scaled || a.price_fair_1000;
+                    const bFair = b.price_fair_live || b.price_fair_scaled || b.price_fair_1000;
+                    return bFair - aFair;
+                } else if (sortBy === 'fair_asc') {
+                    const aFair = a.price_fair_live || a.price_fair_scaled || a.price_fair_1000;
+                    const bFair = b.price_fair_live || b.price_fair_scaled || b.price_fair_1000;
+                    return aFair - bFair;
+                } else if (sortBy === 'pts_desc') {
+                    return (parseFloat(b.pts_exp) || 0) - (parseFloat(a.pts_exp) || 0);
+                } else if (sortBy === 'vorp_desc') {
+                    return (parseFloat(b.vorp) || 0) - (parseFloat(a.vorp) || 0);
+                } else if (sortBy === 'alpha') {
+                    return a.player.localeCompare(b.player);
+                }
+                return 0;
             });
 
             const container = document.getElementById('listoneContainer');
@@ -4979,10 +5223,10 @@ HTML_TEMPLATE = """
                         </div>
                         <div class="player-stats">
                             <div class="scout-price-box">
-                                <div class="player-fair" title="Fair Price Live">${fairLive} <span style="font-size:0.7rem; font-weight:700;">cr</span></div>
+                                <div class="player-fair" title="Prezzo Fair calcolato sul tuo budget di lega (${activeBudget} cr)">${fairLive} <span style="font-size:0.7rem; font-weight:700;">cr</span></div>
                             </div>
-                            <div style="font-size:0.7rem; color:var(--text-muted); margin-top:2px;">
-                                ${fairLive !== fairScaled ? `Base: ${fairScaled}cr` : `Uff: ${p.price_official}cr`}
+                            <div style="font-size:0.68rem; color:var(--text-muted); margin-top:2px;">
+                                su ${activeBudget} cr
                             </div>
                             <div class="player-vorp" style="color:${p.surplus_value > 0 ? 'var(--success)' : 'var(--danger)'}">
                                 ${p.surplus_value > 0 ? '+' : ''}${p.surplus_value} cr
