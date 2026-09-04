@@ -1160,6 +1160,43 @@ def api_ai_query():
     prompt_lower = prompt.lower()
 
     # ─────────────────────────────────────────────────────────────
+    # ENTITY EXTRACTION & QUERY NORMALIZATION
+    # ─────────────────────────────────────────────────────────────
+    aliases = {
+        'lautaro': 'martinez l.',
+        'lautaro martinez': 'martinez l.',
+        'kvara': 'kvaratskhelia',
+        'calha': 'calhanoglu',
+        'chalanoglu': 'calhanoglu',
+        'dimash': 'dimarco',
+        'douglas': 'douglas luiz',
+        'thuram': 'thuram',
+        'woltemade': 'woltemade',
+    }
+    expanded_prompt = prompt_lower
+    for k_alias, v_target in aliases.items():
+        if k_alias in expanded_prompt and v_target not in expanded_prompt:
+            expanded_prompt += f" {v_target}"
+
+    def player_matches_query(p_name_str, query_str):
+        p_clean = str(p_name_str).lower().strip()
+        if p_clean in query_str:
+            return True
+        tokens = [t for t in re.split(r'[\s\.\-]+', p_clean) if len(t) >= 3]
+        for tok in tokens:
+            if re.search(rf'\b{re.escape(tok)}\b', query_str):
+                return True
+        return False
+
+    explicit_matches = []
+    seen_explicit = set()
+    for _, row in df.iterrows():
+        p_name = row['player']
+        if player_matches_query(p_name, expanded_prompt) and p_name not in seen_explicit:
+            seen_explicit.add(p_name)
+            explicit_matches.append(row)
+
+    # ─────────────────────────────────────────────────────────────
     # 1. MODULAR COPILOT INTEGRATION (Ollama / OpenAI / Gemini)
     # ─────────────────────────────────────────────────────────────
     try:
@@ -1177,17 +1214,14 @@ def api_ai_query():
         unassigned_df['fair_custom'] = unassigned_df['player'].map(custom_fair_prices).fillna(1).astype(int)
         unassigned_df['vorp_custom'] = unassigned_df['player'].map(custom_vorp).fillna(0.0).astype(float)
 
-        # Dynamic contextual sampling based on user query
         sample_df = unassigned_df.copy()
         
-        # 1. Role filtering if requested
         role_map_kw = {'portier': 'P', 'difensor': 'D', 'centrocampist': 'C', 'attaccant': 'A'}
         for r_key, r_code in role_map_kw.items():
             if r_key in prompt_lower:
                 sample_df = sample_df[sample_df['role'] == r_code]
                 break
 
-        # 2. Team filtering if requested
         team_kw = {
             'como': 'COM', 'milan': 'MIL', 'juve': 'JUV', 'juventus': 'JUV',
             'inter': 'INT', 'roma': 'ROM', 'lazio': 'LAZ', 'atalanta': 'ATA',
@@ -1200,7 +1234,6 @@ def api_ai_query():
                 sample_df = sample_df[sample_df['team'] == t_c]
                 break
 
-        # 3. Low-cost / "a 1" / budget filtering
         is_low_cost = any(term in prompt_lower for term in ["a 1", "1 credito", "1 cr", "low cost", "scommess", "economici", "risparmi", "prezzo basso", "meno di 5", "sotto i 5"])
         low_cost_threshold = max(3, int(budget_total * 0.02))
         if is_low_cost:
@@ -1213,9 +1246,29 @@ def api_ai_query():
         if sample_df.empty:
             sample_df = unassigned_df.sort_values('vorp_custom', ascending=False)
 
-        top_sample = sample_df.head(35)[['player', 'role', 'team', 'predicted_pts_p50', 'fair_custom', 'vorp_custom', 'is_starter_2627']].rename(
+        explicit_sample = []
+        for row in explicit_matches:
+            p_name = row['player']
+            p_fair = int(custom_fair_prices.get(p_name, row.get('prezzo_fair_1000', 1)))
+            p_vorp = float(custom_vorp.get(p_name, row.get('vorp_points', 0.0)))
+            explicit_sample.append({
+                'player': p_name,
+                'role': row['role'],
+                'team': row['team'],
+                'predicted_pts_p50': float(row.get('predicted_pts_p50', 0)),
+                'prezzo_fair_1000': p_fair,
+                'vorp_points': p_vorp,
+                'is_starter_2627': bool(row.get('is_starter_2627', False))
+            })
+
+        sample_unmentioned = sample_df[~sample_df['player'].isin(seen_explicit)]
+        remaining_slots = max(0, 35 - len(explicit_sample))
+        other_sample = sample_unmentioned.head(remaining_slots)[['player', 'role', 'team', 'predicted_pts_p50', 'fair_custom', 'vorp_custom', 'is_starter_2627']].rename(
             columns={'fair_custom': 'prezzo_fair_1000', 'vorp_custom': 'vorp_points'}
         ).to_dict(orient='records')
+
+        top_sample = explicit_sample + other_sample
+
         team_context = {
             "name": team["name"],
             "remaining": team["remaining"],
@@ -1240,7 +1293,7 @@ def api_ai_query():
 
     # A. Check for Squad Health / Roster Diagnostic
     squad_keywords = ["squadra", "rosa", "come sono", "cosa mi manca", "situazione", "budget", "bilancio", "diagnosi"]
-    if any(k in prompt_lower for k in squad_keywords) and not any(p_name in prompt_lower for p_name in df['player'].str.lower().head(100)):
+    if any(k in prompt_lower for k in squad_keywords) and not explicit_matches:
         p_slots = 4 - counts.get('P', 0)
         d_slots = 9 - counts.get('D', 0)
         c_slots = 9 - counts.get('C', 0)
@@ -1259,107 +1312,74 @@ def api_ai_query():
             advice_points.append("ATTENZIONE: Media crediti per slot molto bassa. Procedi con disciplina chiamando solo svincolati a 1 credito.")
 
         return jsonify({
-            "type": "roster_diagnostic",
+            "type": "squad_diagnostic",
             "title": f"Diagnosi Tattica: {team['name']}",
             "engine": "Regole Tattiche Locali (Offline)",
-            "stats": {
+            "metrics": {
                 "remaining": team['remaining'],
                 "max_bid": team['max_bid'],
-                "free_slots": {"P": p_slots, "D": d_slots, "C": c_slots, "A": a_slots, "total": tot_free},
-                "spent_by_role": spent,
+                "free_slots": tot_free,
                 "avg_per_slot": avg_cr_per_slot
             },
             "advice": advice_points,
             "verdict": f"Stato Finanziario: Ti restano {team['remaining']} cr per {tot_free} slot (media {avg_cr_per_slot} cr/slot). Max rilancio disponibile: {team['max_bid']} cr."
         })
 
-    aliases = {
-        'lautaro': 'martinez l.',
-        'lautaro martinez': 'martinez l.',
-        'kvara': 'kvaratskhelia',
-        'calha': 'calhanoglu',
-        'chalanoglu': 'calhanoglu',
-        'dimash': 'dimarco',
-        'douglas': 'douglas luiz',
-    }
-    expanded_prompt = prompt_lower
-    for k_alias, v_target in aliases.items():
-        if k_alias in expanded_prompt:
-            expanded_prompt += f" {v_target}"
-
-    def player_matches_query(p_name_str, query_str):
-        p_clean = p_name_str.lower()
-        if p_clean in query_str:
-            return True
-        tokens = [t for t in re.split(r'[\s\.\-]+', p_clean) if len(t) >= 4]
-        for tok in tokens:
-            if re.search(rf'\b{re.escape(tok)}\b', query_str):
-                return True
-        return False
-
-    # B. Multi-Player Comparison (2 or more players)
-    is_comp = any(w in prompt_lower for w in ["vs", "contro", "confront", "meglio tra", "differenza tra", "chi tra", "chi prendere tra"])
-    if is_comp:
-        matched_players = []
-        for _, row in df.iterrows():
-            if player_matches_query(row['player'], expanded_prompt):
-                if row['player'] not in [m['player'] for m in matched_players]:
-                    matched_players.append(row)
-            if len(matched_players) >= 3:
-                break
-
-        if len(matched_players) >= 2:
-            matched_players = matched_players[:2] if len(re.split(r'\s+(?:vs|contro|e|o)\s+', prompt_lower)) <= 2 else matched_players[:3]
-            matched_players.sort(key=lambda r: float(r.get('vorp_points', 0)), reverse=True)
-            winner = matched_players[0]
-            
-            p_list = []
-            for r in matched_players:
-                p_list.append({
-                    "name": r['player'], "team": r['team'], "role": r['role'],
-                    "pts_exp": float(r.get('predicted_pts_p50', 0)),
-                    "fair_1000": int(r.get('prezzo_fair_1000', 1)),
-                    "vorp": float(r.get('vorp_points', 0)),
-                    "starts": int(r.get('starts_2627', 0)),
-                    "injury_days": int(r.get('giorni_infortunio_3y', 0))
-                })
-
-            return jsonify({
-                "type": "comparison",
-                "title": f"Confronto: {' vs '.join([p['name'] for p in p_list])}",
-                "engine": "Regole Tattiche Locali (Offline)",
-                "players": p_list,
-                "winner": winner['player'],
-                "verdict": f"Scelta Consigliata: **{winner['player']}** è il profilo con efficienza superiore (+{winner.get('vorp_points', 0):.1f} VORP, {winner.get('predicted_pts_p50', 0):.1f} pts attesi, Prezzo Fair: {int(winner.get('prezzo_fair_1000', 1))} cr)."
+    # B. Multi-Player Comparison (2 or more players, explicit or comparison query)
+    is_comp = any(w in prompt_lower for w in ["vs", "contro", "confront", "meglio tra", "differenza tra", "chi tra", "chi prendere tra"]) or len(explicit_matches) >= 2
+    if is_comp and len(explicit_matches) >= 2:
+        matched_players = list(explicit_matches[:3])
+        matched_players.sort(key=lambda r: float(r.get('vorp_points', 0)), reverse=True)
+        winner = matched_players[0]
+        
+        p_list = []
+        for r in matched_players:
+            p_list.append({
+                "name": r['player'], "team": r['team'], "role": r['role'],
+                "pts_exp": float(r.get('predicted_pts_p50', 0)),
+                "fair_1000": int(r.get('prezzo_fair_1000', 1)),
+                "vorp": float(r.get('vorp_points', 0)),
+                "starts": int(r.get('starts_2627', 0)),
+                "injury_days": int(r.get('giorni_infortunio_3y', 0))
             })
+
+        return jsonify({
+            "type": "comparison",
+            "title": f"Confronto: {' vs '.join([p['name'] for p in p_list])}",
+            "engine": "Regole Tattiche Locali (Offline)",
+            "players": p_list,
+            "winner": winner['player'],
+            "verdict": f"Scelta Consigliata: **{winner['player']}** è il profilo con efficienza superiore (+{winner.get('vorp_points', 0):.1f} VORP, {winner.get('predicted_pts_p50', 0):.1f} pts attesi, Prezzo Fair: {int(winner.get('prezzo_fair_1000', 1))} cr)."
+        })
 
     # C. Specific Player Analysis
-    for _, row in df.iterrows():
-        if player_matches_query(row['player'], prompt_lower):
-            is_ass = row['player'] in assigned
-            starter_txt = "Titolare confermato 2026/27" if row.get('is_starter_2627') else "Rotazione / Non ancora titolare fisso"
-            return jsonify({
-                "type": "player_deepdive",
-                "title": f"Scheda Analitica: {row['player']} ({row['team']})",
-                "engine": "Regole Tattiche Locali (Offline)",
-                "player": {
-                    "name": row['player'],
-                    "team": row['team'],
-                    "role": row['role'],
-                    "role_mantra": str(row.get('role_mantra', '')),
-                    "pts_exp": float(row.get('predicted_pts_p50', 0)),
-                    "pts_floor": float(row.get('predicted_pts_p10', 0)),
-                    "pts_ceil": float(row.get('predicted_pts_p90', 0)),
-                    "fair_1000": int(row.get('prezzo_fair_1000', 1)),
-                    "surplus": int(row.get('surplus_value_cr', 0)),
-                    "vorp": float(row.get('vorp_points', 0)),
-                    "starts": int(row.get('starts_2627', 0)),
-                    "minutes": int(row.get('minutes_2627', 0)),
-                    "injury_days": int(row.get('giorni_infortunio_3y', 0)),
-                    "is_assigned": is_ass
-                },
-                "verdict": f"Valutazione Modello: Prezzo fair stimato a 1000cr: **{row.get('prezzo_fair_1000', 1)} cr**. {starter_txt} con proiezione P50 di **{row.get('predicted_pts_p50', 0):.1f} punti attesi** e VORP **+{row.get('vorp_points', 0):.1f}**."
-            })
+    target_matches = explicit_matches if explicit_matches else [row for _, row in df.iterrows() if player_matches_query(row['player'], expanded_prompt)]
+    if target_matches:
+        row = target_matches[0]
+        is_ass = row['player'] in assigned
+        starter_txt = "Titolare confermato 2026/27" if row.get('is_starter_2627') else "Rotazione / Non ancora titolare fisso"
+        return jsonify({
+            "type": "player_deepdive",
+            "title": f"Scheda Analitica: {row['player']} ({row['team']})",
+            "engine": "Regole Tattiche Locali (Offline)",
+            "player": {
+                "name": row['player'],
+                "team": row['team'],
+                "role": row['role'],
+                "role_mantra": str(row.get('role_mantra', '')),
+                "pts_exp": float(row.get('predicted_pts_p50', 0)),
+                "pts_floor": float(row.get('predicted_pts_p10', 0)),
+                "pts_ceil": float(row.get('predicted_pts_p90', 0)),
+                "fair_1000": int(row.get('prezzo_fair_1000', 1)),
+                "surplus": int(row.get('surplus_value_cr', 0)),
+                "vorp": float(row.get('vorp_points', 0)),
+                "starts": int(row.get('starts_2627', 0)),
+                "minutes": int(row.get('minutes_2627', 0)),
+                "injury_days": int(row.get('giorni_infortunio_3y', 0)),
+                "is_assigned": is_ass
+            },
+            "verdict": f"Valutazione Modello: Prezzo fair stimato a 1000cr: **{row.get('prezzo_fair_1000', 1)} cr**. {starter_txt} con proiezione P50 di **{row.get('predicted_pts_p50', 0):.1f} punti attesi** e VORP **+{row.get('vorp_points', 0):.1f}**."
+        })
 
     # D. Recommendations by Role, Team, Budget, or Modificatore
     role_map = {'portier': 'P', 'difensor': 'D', 'centrocampist': 'C', 'attaccant': 'A'}
@@ -2012,6 +2032,88 @@ HTML_TEMPLATE = """
             line-height: 1;
         }
         .player-vorp { font-size: 0.78rem; font-weight: 700; margin-top: 2px; }
+
+        .medical-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            font-size: 0.68rem;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: transform 0.15s, opacity 0.15s;
+            user-select: none;
+        }
+        .medical-badge:hover {
+            transform: scale(1.05);
+            opacity: 0.9;
+        }
+        .medical-badge-success {
+            background: rgba(34, 197, 94, 0.15);
+            color: #4ade80;
+            border: 1px solid rgba(34, 197, 94, 0.3);
+        }
+        .medical-badge-warning {
+            background: rgba(234, 179, 8, 0.15);
+            color: #facc15;
+            border: 1px solid rgba(234, 179, 8, 0.3);
+        }
+        .medical-badge-danger {
+            background: rgba(239, 68, 68, 0.15);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .target-slot-card {
+            background: #0b111e;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            margin-bottom: 8px;
+            padding: 10px 14px;
+            transition: all 0.2s ease;
+        }
+        .target-slot-card:hover {
+            border-color: rgba(56, 189, 248, 0.4);
+        }
+        .target-slot-card.occupied {
+            background: linear-gradient(135deg, rgba(15, 23, 42, 0.9), rgba(11, 17, 30, 0.95));
+            border-left: 4px solid var(--gold);
+        }
+        .target-slot-card.empty {
+            background: transparent;
+            border: 1px dashed rgba(56, 189, 248, 0.35);
+        }
+        .target-slot-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .target-slot-candidates {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid var(--border);
+            background: rgba(15, 23, 42, 0.65);
+            border-radius: 8px;
+            padding: 10px;
+        }
+        .candidate-player-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 10px;
+            background: #0f172a;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 6px;
+            margin-bottom: 6px;
+            transition: background 0.15s;
+        }
+        .candidate-player-row:hover {
+            background: rgba(56, 189, 248, 0.08);
+            border-color: rgba(56, 189, 248, 0.3);
+        }
 
         .target-icon-btn {
             background: rgba(255, 255, 255, 0.04);
@@ -2841,69 +2943,90 @@ HTML_TEMPLATE = """
             </div>
         </div>
 
-        <!-- TAB 2: I MIEI TARGET & SIMULATORE STRATEGIA (DEFAULT LANDING) -->
+        <!-- TAB 2: I MIEI TARGET & SIMULATORE STRATEGIA (SLOT-BASED ROSTER ARCHITECTURE) -->
         <div id="tab-targets" class="tab-content active">
+            <!-- Financial Commitment & Strategy Simulator HUD -->
             <div class="card" style="border-left: 4px solid var(--gold);">
                 <div class="card-header">
-                    <div class="card-title">Simulatore Impegno Finanziario</div>
-                    <span id="targetCommitmentBadge" style="font-size:0.85rem; font-weight:800; color:var(--gold);"></span>
-                </div>
-                <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; text-align:center; margin-top:8px;">
-                    <div style="background:#0b111e; padding:8px; border-radius:6px; border:1px solid var(--border);">
-                        <div style="font-size:0.68rem; color:var(--text-muted); font-weight:700;">TOP TARGET (1ª FASCIA)</div>
-                        <div id="commitTier1" style="font-size:1.05rem; font-weight:800; color:#f87171;">0 cr</div>
+                    <div>
+                        <div class="card-title">🎯 Simulatore Impegno Finanziario & Slot Target</div>
+                        <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">
+                            Configura la tua rosa ideale per ruolo e monitora la spesa stimata vs budget di lega.
+                        </div>
                     </div>
-                    <div style="background:#0b111e; padding:8px; border-radius:6px; border:1px solid var(--border);">
-                        <div style="font-size:0.68rem; color:var(--text-muted); font-weight:700;">ALTERNATIVE (2ª FASCIA)</div>
-                        <div id="commitTier2" style="font-size:1.05rem; font-weight:800; color:#fbbf24;">0 cr</div>
-                    </div>
-                    <div style="background:#0b111e; padding:8px; border-radius:6px; border:1px solid var(--border);">
-                        <div style="font-size:0.68rem; color:var(--text-muted); font-weight:700;">TARGET LIBERI</div>
-                        <div id="targetAvailableCount" style="font-size:1.05rem; font-weight:800; color:var(--primary);">0</div>
+                    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                        <button class="btn-secondary" style="width:auto; padding:5px 10px; font-size:0.75rem; font-weight:700;" onclick="clearAllTargetSlots()">Pulisci Slot</button>
+                        <button class="btn-secondary" style="width:auto; padding:5px 10px; font-size:0.75rem; font-weight:700;" onclick="exportTargetsJSON()">Esporta Wishlist</button>
                     </div>
                 </div>
-            </div>
 
-            <!-- Target Roster Slots Coverage -->
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-title">Copertura Reparti nei Target</div>
-                    <button class="btn-secondary" style="width:auto; padding:4px 10px; font-size:0.75rem;" onclick="exportTargetsJSON()">Esporta Wishlist</button>
+                <!-- 4 KPI Boxes -->
+                <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:8px; text-align:center; margin-top:10px;">
+                    <div style="background:#0b111e; padding:10px 8px; border-radius:8px; border:1px solid var(--border);">
+                        <div style="font-size:0.68rem; color:var(--text-muted); font-weight:700;">BUDGET LEGA</div>
+                        <div id="targetBudgetTotal" style="font-size:1.15rem; font-weight:800; color:var(--text-main);">1000 cr</div>
+                    </div>
+                    <div style="background:#0b111e; padding:10px 8px; border-radius:8px; border:1px solid var(--border);">
+                        <div style="font-size:0.68rem; color:var(--text-muted); font-weight:700;">SPESA FAIR STIMATA</div>
+                        <div id="targetEstSpendFair" style="font-size:1.15rem; font-weight:800; color:var(--gold);">0 cr</div>
+                    </div>
+                    <div style="background:#0b111e; padding:10px 8px; border-radius:8px; border:1px solid var(--border);">
+                        <div style="font-size:0.68rem; color:var(--text-muted); font-weight:700;">SPESA MAX (TETTO)</div>
+                        <div id="targetEstSpendMax" style="font-size:1.15rem; font-weight:800; color:#f87171;">0 cr</div>
+                    </div>
+                    <div style="background:#0b111e; padding:10px 8px; border-radius:8px; border:1px solid var(--border);">
+                        <div style="font-size:0.68rem; color:var(--text-muted); font-weight:700;">SALDO RESIDUO</div>
+                        <div id="targetEstRemaining" style="font-size:1.15rem; font-weight:800; color:var(--primary);">1000 cr</div>
+                    </div>
                 </div>
-                <div class="dept-grid">
+
+                <!-- Progress Bar -->
+                <div style="margin-top:12px;">
+                    <div class="hud-squad-bar" title="Copertura Slot Obiettivo">
+                        <div class="hud-squad-progress" id="targetSlotsProgress" style="width: 0%;"></div>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:var(--text-muted); margin-top:4px;">
+                        <span id="targetSlotsProgressText">0/29 Slot Pianificati</span>
+                        <span>VORP Cumulato Stimato: <b id="targetEstTotalVorp" style="color:var(--primary);">+0.0</b></span>
+                    </div>
+                </div>
+
+                <!-- Department Spends (P, D, C, A) -->
+                <div class="dept-grid" style="margin-top:12px;">
                     <div class="dept-card">
                         <div class="dept-label" style="color:var(--role-p);">PORTIERI</div>
-                        <div class="dept-spent" id="targetCoverageP">0/4</div>
-                        <div class="dept-count" id="targetSpentP">0 cr max</div>
+                        <div class="dept-spent" id="targetRepartSpentP">0 cr</div>
+                        <div class="dept-count" id="targetRepartCountP">0/4 slot</div>
                     </div>
                     <div class="dept-card">
                         <div class="dept-label" style="color:var(--role-d);">DIFENSORI</div>
-                        <div class="dept-spent" id="targetCoverageD">0/9</div>
-                        <div class="dept-count" id="targetSpentD">0 cr max</div>
+                        <div class="dept-spent" id="targetRepartSpentD">0 cr</div>
+                        <div class="dept-count" id="targetRepartCountD">0/9 slot</div>
                     </div>
                     <div class="dept-card">
                         <div class="dept-label" style="color:var(--role-c);">CENTROCAMPISTI</div>
-                        <div class="dept-spent" id="targetCoverageC">0/9</div>
-                        <div class="dept-count" id="targetSpentC">0 cr max</div>
+                        <div class="dept-spent" id="targetRepartSpentC">0 cr</div>
+                        <div class="dept-count" id="targetRepartCountC">0/9 slot</div>
                     </div>
                     <div class="dept-card">
                         <div class="dept-label" style="color:var(--role-a);">ATTACCANTI</div>
-                        <div class="dept-spent" id="targetCoverageA">0/7</div>
-                        <div class="dept-count" id="targetSpentA">0 cr max</div>
+                        <div class="dept-spent" id="targetRepartSpentA">0 cr</div>
+                        <div class="dept-count" id="targetRepartCountA">0/7 slot</div>
                     </div>
                 </div>
             </div>
 
-            <!-- Targets Filter & List -->
+            <!-- Role Filter Pills -->
             <div class="pills" id="targetRolePills">
                 <div class="pill active" onclick="setTargetRoleFilter('ALL')">Tutti i Ruoli</div>
-                <div class="pill" onclick="setTargetRoleFilter('P')">Portieri</div>
-                <div class="pill" onclick="setTargetRoleFilter('D')">Difensori</div>
-                <div class="pill" onclick="setTargetRoleFilter('C')">Centrocampisti</div>
-                <div class="pill" onclick="setTargetRoleFilter('A')">Attaccanti</div>
+                <div class="pill" onclick="setTargetRoleFilter('P')">🧤 Portieri</div>
+                <div class="pill" onclick="setTargetRoleFilter('D')">🛡️ Difensori</div>
+                <div class="pill" onclick="setTargetRoleFilter('C')">⚙️ Centrocampisti</div>
+                <div class="pill" onclick="setTargetRoleFilter('A')">⚡ Attaccanti</div>
             </div>
 
-            <div id="targetsListContainer"></div>
+            <!-- Role-based Slotted List Container -->
+            <div id="targetRolesContainer"></div>
         </div>
 
         <!-- TAB 3: CHIEDI AL TACTICAL CHATBOT -->
@@ -3737,7 +3860,7 @@ HTML_TEMPLATE = """
         let _currentDetailPlayer = null;
 
         function openPlayerDetailDrawer(playerName) {
-            const p = (cachedPlayers || []).find(x => x.player === playerName);
+            const p = (typeof allPlayers !== 'undefined' ? allPlayers : []).find(x => x.player === playerName);
             if (!p) return;
             _currentDetailPlayer = p;
 
@@ -4907,109 +5030,423 @@ HTML_TEMPLATE = """
             renderStrategyTab();
         }
 
-        function renderTargetsTab() {
-            const targets = loadUserTargets();
-            const targetNames = Object.keys(targets);
-            const assignedMap = auctionState.assigned_players || {};
+        /* ─────────────────────────────────────────────────────────────
+           TARGETS & WISHLIST MANAGEMENT (SLOT-BASED ROSTER PLANNER)
+        ───────────────────────────────────────────────────────────── */
+        let currentTargetRoleFilter = 'ALL';
+        let expandedTargetSlot = null; // e.g. "P_0", "D_3"
+        let targetCandidateSearch = '';
+        let targetCandidateFascia = 0; // 0 = all
 
-            let sumTier1 = 0;
-            let sumTier2 = 0;
-            let availableCount = 0;
-            const coverage = {P: 0, D: 0, C: 0, A: 0};
-            const targetSpend = {P: 0, D: 0, C: 0, A: 0};
+        function getTargetSlotsStorageKey() {
+            return `fanta_target_slots_profile_${activeProfileId}`;
+        }
 
-            const targetList = [];
+        function loadTargetSlots() {
+            try {
+                const saved = localStorage.getItem(getTargetSlotsStorageKey());
+                return saved ? JSON.parse(saved) : {};
+            } catch(e) {
+                return {};
+            }
+        }
 
-            targetNames.forEach(name => {
-                const t = targets[name];
-                const p = allPlayers.find(x => x.player === name) || {};
-                const isAssigned = name in assignedMap;
-                const assignment = assignedMap[name];
-                const isMine = assignment && assignment.team_id === activeProfileId;
+        function saveTargetSlots(slots) {
+            localStorage.setItem(getTargetSlotsStorageKey(), JSON.stringify(slots));
+        }
 
-                const role = t.role || p.role || 'C';
-                const fair = p.price_fair_live || p.price_fair_scaled || p.price_fair_1000 || 1;
-                const maxPrice = t.max_price || fair || 1;
-                const priority = t.priority || 1;
+        function setTargetRoleFilter(role) {
+            currentTargetRoleFilter = role;
+            const pills = document.querySelectorAll('#targetRolePills .pill');
+            pills.forEach(p => {
+                p.classList.toggle('active', 
+                    (role === 'ALL' && p.textContent.includes('Tutti')) ||
+                    (role === 'P' && p.textContent.includes('Portieri')) ||
+                    (role === 'D' && p.textContent.includes('Difensori')) ||
+                    (role === 'C' && p.textContent.includes('Centrocampisti')) ||
+                    (role === 'A' && p.textContent.includes('Attaccanti'))
+                );
+            });
+            renderTargetsTab();
+        }
 
-                if (!isAssigned) {
-                    availableCount++;
-                    if (priority === 1) sumTier1 += maxPrice;
-                    else if (priority === 2) sumTier2 += maxPrice;
+        function toggleTargetSlotCandidates(slotKey) {
+            if (expandedTargetSlot === slotKey) {
+                expandedTargetSlot = null;
+            } else {
+                expandedTargetSlot = slotKey;
+                targetCandidateSearch = '';
+                targetCandidateFascia = 0;
+            }
+            renderTargetsTab();
+        }
+
+        function setTargetCandidateFascia(f) {
+            targetCandidateFascia = f;
+            renderTargetsTab();
+        }
+
+        function filterTargetCandidates(slotKey, query) {
+            targetCandidateSearch = (query || '').toLowerCase().trim();
+            const listEl = document.getElementById(`candidates-list-${slotKey}`);
+            if (!listEl) return;
+            const [role, idxStr] = slotKey.split('_');
+            const slotIdx = parseInt(idxStr, 10);
+            listEl.innerHTML = renderCandidateItemsHtml(role, slotIdx);
+        }
+
+        function assignPlayerToTargetSlot(role, slotIdx, playerName) {
+            const slots = loadTargetSlots();
+            for (const k in slots) {
+                if (slots[k] === playerName) {
+                    delete slots[k];
                 }
+            }
+            slots[`${role}_${slotIdx}`] = playerName;
+            saveTargetSlots(slots);
 
-                coverage[role] = (coverage[role] || 0) + 1;
-                targetSpend[role] = (targetSpend[role] || 0) + maxPrice;
-
-                targetList.push({
-                    ...t,
-                    pts_exp: p.pts_exp || 0,
-                    price_fair: fair,
-                    price_fair_1000: p.price_fair_1000 || maxPrice,
-                    is_assigned: isAssigned,
-                    is_mine: isMine,
-                    assignment: assignment
-                });
-            });
-
-            // Update Financial Commitment Badges
-            document.getElementById('commitTier1').textContent = `${sumTier1} cr`;
-            document.getElementById('commitTier2').textContent = `${sumTier2} cr`;
-            document.getElementById('targetAvailableCount').textContent = `${availableCount}/${targetNames.length}`;
-            document.getElementById('targetCommitmentBadge').textContent = `Totale Top: ${sumTier1} cr`;
-
-            // Update Slot Coverage with dynamic league slots
-            const rs = auctionState.roster_structure || leagueRosterStructure || {P:4, D:9, C:9, A:7};
-            document.getElementById('targetCoverageP').textContent = `${coverage.P}/${rs.P || 4}`;
-            document.getElementById('targetSpentP').textContent = `${targetSpend.P} cr max`;
-            document.getElementById('targetCoverageD').textContent = `${coverage.D}/${rs.D || 9}`;
-            document.getElementById('targetSpentD').textContent = `${targetSpend.D} cr max`;
-            document.getElementById('targetCoverageC').textContent = `${coverage.C}/${rs.C || 9}`;
-            document.getElementById('targetSpentC').textContent = `${targetSpend.C} cr max`;
-            document.getElementById('targetCoverageA').textContent = `${coverage.A}/${rs.A || 7}`;
-            document.getElementById('targetSpentA').textContent = `${targetSpend.A} cr max`;
-
-            // Filter targets by role
-            const filtered = targetList.filter(t => currentTargetRoleFilter === 'ALL' || t.role === currentTargetRoleFilter);
-            filtered.sort((a,b) => {
-                if (a.priority !== b.priority) return a.priority - b.priority;
-                return b.max_price - a.max_price;
-            });
-
-            const container = document.getElementById('targetsListContainer');
-            if (filtered.length === 0) {
-                container.innerHTML = '<div class="card" style="text-align:center; color:var(--text-muted); font-size:0.85rem;">Nessun target salvato. Clicca sul mirino accanto a qualsiasi calciatore nel Listone per aggiungerlo.</div>';
-                return;
+            // Synchronize with userTargets
+            const targets = loadUserTargets();
+            const p = allPlayers.find(x => x.player === playerName) || {};
+            const fair = p.price_fair_live || p.price_fair_scaled || p.price_fair_1000 || 1;
+            if (!targets[playerName]) {
+                targets[playerName] = {
+                    player: playerName,
+                    role: role,
+                    team: p.team || '',
+                    max_price: fair,
+                    priority: slotIdx < 2 ? 1 : 2,
+                    notes: `Slot #${slotIdx + 1} ${role}`,
+                    created_at: new Date().toISOString()
+                };
+                saveUserTargets(targets);
             }
 
-            container.innerHTML = filtered.map(t => {
-                let statusBadge = '<span style="color:var(--primary); font-weight:800; font-size:0.82rem;">DISPONIBILE</span>';
-                if (t.is_mine) {
-                    statusBadge = `<span style="color:var(--success); font-weight:800; font-size:0.82rem;">ACQUISTATO (${t.assignment.price} cr)</span>`;
-                } else if (t.is_assigned) {
-                    statusBadge = `<span style="color:var(--danger); font-weight:700; font-size:0.82rem;">PERSO &rarr; ${t.assignment.team_name} (${t.assignment.price} cr)</span>`;
+            expandedTargetSlot = null;
+            renderTargetsTab();
+            renderListone();
+            renderStrategyTab();
+        }
+
+        function vacateTargetSlot(role, slotIdx) {
+            const slots = loadTargetSlots();
+            delete slots[`${role}_${slotIdx}`];
+            saveTargetSlots(slots);
+            renderTargetsTab();
+            renderListone();
+            renderStrategyTab();
+        }
+
+        function clearAllTargetSlots() {
+            if (confirm("Vuoi davvero svuotare tutti gli slot target pianificati?")) {
+                localStorage.removeItem(getTargetSlotsStorageKey());
+                expandedTargetSlot = null;
+                renderTargetsTab();
+                renderListone();
+                renderStrategyTab();
+            }
+        }
+
+        function renderCandidateItemsHtml(role, slotIdx) {
+            const slots = loadTargetSlots();
+            const assignedMap = auctionState.assigned_players || {};
+            const candidates = allPlayers.filter(p => {
+                if (p.role !== role) return false;
+                if (targetCandidateFascia > 0 && p.fascia !== targetCandidateFascia) return false;
+                if (targetCandidateSearch) {
+                    const matchName = (p.player || '').toLowerCase().includes(targetCandidateSearch);
+                    const matchTeam = (p.team || '').toLowerCase().includes(targetCandidateSearch);
+                    if (!matchName && !matchTeam) return false;
+                }
+                return true;
+            });
+
+            candidates.sort((a, b) => {
+                const fairA = a.price_fair_live || a.price_fair_scaled || a.price_fair_1000 || 1;
+                const fairB = b.price_fair_live || b.price_fair_scaled || b.price_fair_1000 || 1;
+                if (fairB !== fairA) return fairB - fairA;
+                return (b.vorp || 0) - (a.vorp || 0);
+            });
+
+            if (candidates.length === 0) {
+                return '<div style="text-align:center; padding:12px; color:var(--text-muted); font-size:0.8rem;">Nessun calciatore trovato con i criteri attuali.</div>';
+            }
+
+            return candidates.slice(0, 30).map(p => {
+                const fair = p.price_fair_live || p.price_fair_scaled || p.price_fair_1000 || 1;
+                const isAssigned = (p.player in assignedMap) || p.is_assigned;
+                const isSlotSelected = slots[`${role}_${slotIdx}`] === p.player;
+                const isStarter = p.is_starter_2627 === 1 || p.is_starter_2627 === true || p.is_starter_2627 === "1";
+                const medDays = (p.medical && p.medical.days_lost_3y) || 0;
+                const medBadge = medDays >= 120 
+                    ? `<span class="medical-badge medical-badge-danger" onclick="event.stopPropagation(); openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')" title="Finestra Medica: ${medDays} gg infortunio">🔴 ${medDays}gg</span>`
+                    : (medDays >= 30 
+                        ? `<span class="medical-badge medical-badge-warning" onclick="event.stopPropagation(); openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')" title="Finestra Medica: ${medDays} gg infortunio">🟡 ${medDays}gg</span>`
+                        : `<span class="medical-badge medical-badge-success" onclick="event.stopPropagation(); openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')" title="Finestra Medica: Integro">🟢 Integro</span>`);
+
+                return `
+                    <div class="candidate-player-row" style="${isAssigned ? 'opacity:0.45;' : ''}">
+                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; min-width:0;">
+                            <span class="badge badge-${p.role}">${p.role}</span>
+                            <span class="tier-badge tier-${p.fascia}">F${p.fascia}</span>
+                            <b style="cursor:pointer; font-size:0.95rem;" onclick="openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')">${p.player}</b>
+                            <small style="color:var(--text-muted);">(${p.team})</small>
+                            ${medBadge}
+                            ${isStarter ? `<span class="scout-tag-starter">✓ Titolare</span>` : ''}
+                            ${isAssigned ? `<span style="color:var(--danger); font-size:0.72rem; font-weight:700;">[ASSEGNATO]</span>` : ''}
+                        </div>
+                        <div style="display:flex; align-items:center; gap:10px; flex-shrink:0;">
+                            <div style="text-align:right;">
+                                <div style="color:var(--gold); font-weight:800; font-size:0.95rem;">${fair} cr</div>
+                                <div style="font-size:0.7rem; color:var(--text-muted);">VORP +${(p.vorp || 0).toFixed(1)}</div>
+                            </div>
+                            <button class="btn btn-primary" style="width:auto; padding:5px 10px; font-size:0.75rem; font-weight:800;"
+                                onclick="assignPlayerToTargetSlot('${role}', ${slotIdx}, '${p.player.replace(/'/g, "\\\\'")}')">
+                                ${isSlotSelected ? '✓ Assegnato' : 'Occupa Slot'}
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderTargetsTab() {
+            const struct = auctionState.roster_structure || leagueRosterStructure || {P:4, D:9, C:9, A:7};
+            const activeBudget = auctionState.budget_total || leagueBudget || DEFAULT_BUDGET;
+            const slots = loadTargetSlots();
+            const targets = loadUserTargets();
+            const assignedMap = auctionState.assigned_players || {};
+
+            let totalFair = 0;
+            let totalMax = 0;
+            let totalVorp = 0;
+            let occupiedSlotsCount = 0;
+            const totalSlotsCount = (struct.P || 4) + (struct.D || 9) + (struct.C || 9) + (struct.A || 7);
+
+            const repartFair = {P: 0, D: 0, C: 0, A: 0};
+            const repartMax = {P: 0, D: 0, C: 0, A: 0};
+            const repartCount = {P: 0, D: 0, C: 0, A: 0};
+
+            for (const r of ['P', 'D', 'C', 'A']) {
+                const countRole = struct[r] || 4;
+                for (let i = 0; i < countRole; i++) {
+                    const playerName = slots[`${r}_${i}`];
+                    if (playerName) {
+                        const p = allPlayers.find(x => x.player === playerName) || {};
+                        const fair = p.price_fair_live || p.price_fair_scaled || p.price_fair_1000 || 1;
+                        const userT = targets[playerName] || {};
+                        const maxP = userT.max_price || fair;
+                        const vorpVal = parseFloat(p.vorp || 0);
+
+                        totalFair += fair;
+                        totalMax += maxP;
+                        totalVorp += vorpVal;
+                        occupiedSlotsCount++;
+
+                        repartFair[r] += fair;
+                        repartMax[r] += maxP;
+                        repartCount[r]++;
+                    }
+                }
+            }
+
+            // Update Top HUD
+            const elBudget = document.getElementById('targetBudgetTotal');
+            if (elBudget) elBudget.textContent = `${activeBudget} cr`;
+
+            const elFair = document.getElementById('targetEstSpendFair');
+            if (elFair) elFair.textContent = `${totalFair} cr`;
+
+            const elMax = document.getElementById('targetEstSpendMax');
+            if (elMax) elMax.textContent = `${totalMax} cr`;
+
+            const elRem = document.getElementById('targetEstRemaining');
+            if (elRem) {
+                const rem = activeBudget - totalFair;
+                elRem.textContent = `${rem} cr`;
+                elRem.style.color = rem >= 0 ? 'var(--primary)' : 'var(--danger)';
+            }
+
+            const elProgress = document.getElementById('targetSlotsProgress');
+            if (elProgress) {
+                const pct = totalSlotsCount > 0 ? Math.round((occupiedSlotsCount / totalSlotsCount) * 100) : 0;
+                elProgress.style.width = `${pct}%`;
+            }
+
+            const elProgText = document.getElementById('targetSlotsProgressText');
+            if (elProgText) {
+                const pct = totalSlotsCount > 0 ? Math.round((occupiedSlotsCount / totalSlotsCount) * 100) : 0;
+                elProgText.textContent = `${occupiedSlotsCount}/${totalSlotsCount} Slot Pianificati (${pct}%)`;
+            }
+
+            const elVorp = document.getElementById('targetEstTotalVorp');
+            if (elVorp) elVorp.textContent = `${totalVorp >= 0 ? '+' : ''}${totalVorp.toFixed(1)}`;
+
+            // Department summaries
+            const elP = document.getElementById('targetRepartSpentP');
+            if (elP) elP.textContent = `${repartFair.P} cr`;
+            const elCountP = document.getElementById('targetRepartCountP');
+            if (elCountP) elCountP.textContent = `${repartCount.P}/${struct.P || 4} slot`;
+
+            const elD = document.getElementById('targetRepartSpentD');
+            if (elD) elD.textContent = `${repartFair.D} cr`;
+            const elCountD = document.getElementById('targetRepartCountD');
+            if (elCountD) elCountD.textContent = `${repartCount.D}/${struct.D || 9} slot`;
+
+            const elC = document.getElementById('targetRepartSpentC');
+            if (elC) elC.textContent = `${repartFair.C} cr`;
+            const elCountC = document.getElementById('targetRepartCountC');
+            if (elCountC) elCountC.textContent = `${repartCount.C}/${struct.C || 9} slot`;
+
+            const elA = document.getElementById('targetRepartSpentA');
+            if (elA) elA.textContent = `${repartFair.A} cr`;
+            const elCountA = document.getElementById('targetRepartCountA');
+            if (elCountA) elCountA.textContent = `${repartCount.A}/${struct.A || 7} slot`;
+
+            // Render Role Sections
+            const container = document.getElementById('targetRolesContainer');
+            if (!container) return;
+
+            const roleMeta = {
+                P: { name: "PORTIERI", icon: "🧤", total: struct.P || 4, color: "var(--role-p)" },
+                D: { name: "DIFENSORI", icon: "🛡️", total: struct.D || 9, color: "var(--role-d)" },
+                C: { name: "CENTROCAMPISTI", icon: "⚙️", total: struct.C || 9, color: "var(--role-c)" },
+                A: { name: "ATTACCANTI", icon: "⚡", total: struct.A || 7, color: "var(--role-a)" }
+            };
+
+            const activeRoles = currentTargetRoleFilter === 'ALL' ? ['P', 'D', 'C', 'A'] : [currentTargetRoleFilter];
+
+            container.innerHTML = activeRoles.map(role => {
+                const meta = roleMeta[role];
+                const slotsCount = meta.total;
+                let slotsHtml = '';
+
+                for (let i = 0; i < slotsCount; i++) {
+                    const slotKey = `${role}_${i}`;
+                    const playerName = slots[slotKey];
+                    const isExpanded = expandedTargetSlot === slotKey;
+
+                    let fasciaHint = "Titolare / Regolare";
+                    if (role === 'P') {
+                        if (i === 0) fasciaHint = "1ª Fascia — Top Starter";
+                        else if (i === 1) fasciaHint = "2ª Fascia — Alternanza / Semitop";
+                        else if (i === 2) fasciaHint = "3ª Fascia — Low-Cost / Terzo";
+                        else fasciaHint = "4ª Fascia — Riserva a 1 cr";
+                    } else {
+                        if (i < 2) fasciaHint = "1ª Fascia — Top";
+                        else if (i < 4) fasciaHint = "2ª Fascia — Semitop / Titolare";
+                        else if (i < 6) fasciaHint = "3ª Fascia — Low-Cost";
+                        else fasciaHint = "4ª Fascia — Scommessa / 1 cr";
+                    }
+
+                    if (playerName) {
+                        const p = allPlayers.find(x => x.player === playerName) || { player: playerName, role: role, team: '' };
+                        const fair = p.price_fair_live || p.price_fair_scaled || p.price_fair_1000 || 1;
+                        const userT = targets[playerName] || {};
+                        const maxP = userT.max_price || fair;
+                        const isAssigned = (playerName in assignedMap) || p.is_assigned;
+                        const isMine = assignedMap[playerName] && assignedMap[playerName].team_id === activeProfileId;
+                        const isStarter = p.is_starter_2627 === 1 || p.is_starter_2627 === true || p.is_starter_2627 === "1";
+                        const medDays = (p.medical && p.medical.days_lost_3y) || 0;
+                        const medBadge = medDays >= 120 
+                            ? `<span class="medical-badge medical-badge-danger" onclick="event.stopPropagation(); openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')" title="Finestra Medica: ${medDays} gg infortunio">🔴 ${medDays}gg</span>`
+                            : (medDays >= 30 
+                                ? `<span class="medical-badge medical-badge-warning" onclick="event.stopPropagation(); openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')" title="Finestra Medica: ${medDays} gg infortunio">🟡 ${medDays}gg</span>`
+                                : `<span class="medical-badge medical-badge-success" onclick="event.stopPropagation(); openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')" title="Finestra Medica: Integro">🟢 Integro</span>`);
+
+                        let statusBadge = '';
+                        if (isMine) statusBadge = `<span style="color:var(--success); font-weight:800; font-size:0.75rem;">✓ ACQUISTATO (${assignedMap[playerName].price} cr)</span>`;
+                        else if (isAssigned) statusBadge = `<span style="color:var(--danger); font-weight:800; font-size:0.75rem;">✕ PERSO (${assignedMap[playerName].team_name} - ${assignedMap[playerName].price} cr)</span>`;
+
+                        slotsHtml += `
+                            <div class="target-slot-card occupied" id="slot-card-${slotKey}">
+                                <div class="target-slot-header">
+                                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                        <span class="slot-num">#${i + 1}</span>
+                                        <span class="badge badge-${role}">${role}</span>
+                                        <b style="font-size:1.05rem; cursor:pointer;" onclick="openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')">${p.player}</b>
+                                        <small style="color:var(--text-muted); font-weight:600;">(${p.team})</small>
+                                        ${medBadge}
+                                        ${isStarter ? `<span class="scout-tag-starter">✓ Titolare</span>` : ''}
+                                        ${statusBadge}
+                                    </div>
+                                    <div style="display:flex; align-items:center; gap:12px;">
+                                        <div style="text-align:right;">
+                                            <span class="slot-price">${fair} cr</span>
+                                            <span style="font-size:0.72rem; color:var(--text-muted); margin-left:4px;">(Max ${maxP} cr)</span>
+                                            <div style="font-size:0.70rem; color:var(--primary); font-weight:700;">VORP +${(p.vorp || 0).toFixed(1)}</div>
+                                        </div>
+                                        <div style="display:flex; gap:4px;">
+                                            <button class="btn-secondary" style="width:auto; padding:4px 8px; font-size:0.72rem; font-weight:700;" onclick="openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')" title="Finestra Medica">ℹ️ Info</button>
+                                            <button class="btn-secondary" style="width:auto; padding:4px 8px; font-size:0.72rem; font-weight:700;" onclick="toggleTargetSlotCandidates('${slotKey}')" title="Cambia giocatore">🔄 Cambia</button>
+                                            <button class="btn-danger" style="width:auto; padding:4px 8px; font-size:0.72rem; font-weight:700;" onclick="vacateTargetSlot('${role}', ${i})" title="Libera slot">✕</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                ${isExpanded ? `
+                                    <div class="target-slot-candidates">
+                                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px; flex-wrap:wrap;">
+                                            <div style="font-size:0.78rem; font-weight:700; color:var(--primary);">Sostituisci Slot #${i + 1} (${meta.name}):</div>
+                                            <div class="pills" style="margin:0; gap:4px;">
+                                                <div class="pill ${targetCandidateFascia === 0 ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem;" onclick="setTargetCandidateFascia(0)">Tutte</div>
+                                                <div class="pill ${targetCandidateFascia === 1 ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem;" onclick="setTargetCandidateFascia(1)">F1</div>
+                                                <div class="pill ${targetCandidateFascia === 2 ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem;" onclick="setTargetCandidateFascia(2)">F2</div>
+                                                <div class="pill ${targetCandidateFascia === 3 ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem;" onclick="setTargetCandidateFascia(3)">F3</div>
+                                                <div class="pill ${targetCandidateFascia === 4 ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem;" onclick="setTargetCandidateFascia(4)">F4</div>
+                                            </div>
+                                        </div>
+                                        <input type="text" class="search-input" style="padding:6px 10px; font-size:0.82rem; margin-bottom:8px;" placeholder="Cerca calciatore per nome o squadra..." oninput="filterTargetCandidates('${slotKey}', this.value)">
+                                        <div id="candidates-list-${slotKey}" style="max-height:260px; overflow-y:auto;">
+                                            ${renderCandidateItemsHtml(role, i)}
+                                        </div>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        `;
+                    } else {
+                        slotsHtml += `
+                            <div class="target-slot-card empty" id="slot-card-${slotKey}">
+                                <div class="target-slot-header">
+                                    <div style="display:flex; align-items:center; gap:8px;">
+                                        <span class="slot-num">#${i + 1}</span>
+                                        <span class="badge badge-${role}">${role}</span>
+                                        <span style="color:var(--text-muted); font-size:0.88rem; font-style:italic;">Slot Libero (${fasciaHint})</span>
+                                    </div>
+                                    <button class="btn btn-primary" style="width:auto; padding:4px 10px; font-size:0.75rem; font-weight:700;" onclick="toggleTargetSlotCandidates('${slotKey}')">
+                                        ${isExpanded ? 'Chiudi' : '+ Scegli Giocatore'}
+                                    </button>
+                                </div>
+                                ${isExpanded ? `
+                                    <div class="target-slot-candidates">
+                                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px; flex-wrap:wrap;">
+                                            <div style="font-size:0.78rem; font-weight:700; color:var(--primary);">Calciatori disponibili per Slot #${i + 1} (${meta.name}):</div>
+                                            <div class="pills" style="margin:0; gap:4px;">
+                                                <div class="pill ${targetCandidateFascia === 0 ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem;" onclick="setTargetCandidateFascia(0)">Tutte</div>
+                                                <div class="pill ${targetCandidateFascia === 1 ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem;" onclick="setTargetCandidateFascia(1)">F1</div>
+                                                <div class="pill ${targetCandidateFascia === 2 ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem;" onclick="setTargetCandidateFascia(2)">F2</div>
+                                                <div class="pill ${targetCandidateFascia === 3 ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem;" onclick="setTargetCandidateFascia(3)">F3</div>
+                                                <div class="pill ${targetCandidateFascia === 4 ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem;" onclick="setTargetCandidateFascia(4)">F4</div>
+                                            </div>
+                                        </div>
+                                        <input type="text" class="search-input" style="padding:6px 10px; font-size:0.82rem; margin-bottom:8px;" placeholder="Cerca calciatore per nome o squadra..." oninput="filterTargetCandidates('${slotKey}', this.value)">
+                                        <div id="candidates-list-${slotKey}" style="max-height:260px; overflow-y:auto;">
+                                            ${renderCandidateItemsHtml(role, i)}
+                                        </div>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        `;
+                    }
                 }
 
                 return `
-                    <div class="card" style="padding:14px; margin-bottom:10px; ${t.is_assigned && !t.is_mine ? 'opacity:0.45;' : ''}">
-                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
-                            <div>
-                                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                                    <span class="tier-badge tier-${t.priority}">PRIORITÀ ${t.priority}</span>
-                                    <span class="badge badge-${t.role}">${t.role}</span>
-                                    <b style="font-size:1.05rem;">${t.player}</b>
-                                    <small style="color:var(--text-muted); font-size:0.85rem;">(${t.team})</small>
-                                </div>
-                                <div style="font-size:0.85rem; color:var(--text-muted); margin-top:4px;">
-                                    Fair Price: <b style="color:var(--gold);">${t.price_fair_1000} cr</b> | Punti Attesi: <b style="color:var(--text-main);">${t.pts_exp} pts</b>
-                                </div>
-                                ${t.notes ? `<div style="font-size:0.82rem; color:var(--gold); margin-top:5px; font-style:italic;">Note: ${t.notes}</div>` : ''}
-                            </div>
-                            <div style="text-align:right; flex-shrink:0;">
-                                <div style="font-size:1.2rem; font-weight:800; color:var(--gold);">Max: ${t.max_price} cr</div>
-                                <div>${statusBadge}</div>
-                                <button class="btn-secondary" style="margin-top:8px; padding:6px 12px; font-size:0.82rem; font-weight:700; width:auto;" onclick="openTargetModal('${t.player.replace(/'/g, "\\\\'")}')">Modifica</button>
-                            </div>
+                    <div class="card" style="margin-bottom:14px; padding:14px;">
+                        <div class="slot-title">
+                            <span style="color:${meta.color}; font-weight:800; font-size:0.95rem;">${meta.icon} ${meta.name} (${slotsCount} Slot)</span>
+                            <span style="font-size:0.8rem; color:var(--gold); font-weight:700;">Impegno: ${repartFair[role]} cr (${repartCount[role]}/${slotsCount} occupati)</span>
+                        </div>
+                        <div style="margin-top:10px;">
+                            ${slotsHtml}
                         </div>
                     </div>
                 `;
@@ -5018,7 +5455,14 @@ HTML_TEMPLATE = """
 
         function exportTargetsJSON() {
             const targets = loadUserTargets();
-            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(targets, null, 2));
+            const slots = loadTargetSlots();
+            const exportData = {
+                profile_id: activeProfileId,
+                exported_at: new Date().toISOString(),
+                target_slots: slots,
+                wishlist_targets: targets
+            };
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportData, null, 2));
             const downloadAnchor = document.createElement('a');
             downloadAnchor.setAttribute("href", dataStr);
             downloadAnchor.setAttribute("download", `fanta_targets_profile_${activeProfileId}.json`);
@@ -5651,6 +6095,12 @@ HTML_TEMPLATE = """
                 const fairScaled = p.price_fair_scaled || p.price_fair_1000;
 
                 const isStarter = p.is_starter_2627 === 1 || p.is_starter_2627 === true || p.is_starter_2627 === "1";
+                const medDays = (p.medical && p.medical.days_lost_3y) || 0;
+                const medBadge = medDays >= 120 
+                    ? `<span class="medical-badge medical-badge-danger" onclick="event.stopPropagation(); openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')" title="Finestra Medica: ${medDays} gg infortunio (3 anni)">🔴 ${medDays}gg</span>`
+                    : (medDays >= 30 
+                        ? `<span class="medical-badge medical-badge-warning" onclick="event.stopPropagation(); openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')" title="Finestra Medica: ${medDays} gg infortunio (3 anni)">🟡 ${medDays}gg</span>`
+                        : `<span class="medical-badge medical-badge-success" onclick="event.stopPropagation(); openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')" title="Finestra Medica: Integro (${medDays} gg infortunio)">🟢 Integro</span>`);
 
                 return `
                     <div class="player-row role-${p.role}" style="${isAssigned ? 'opacity:0.42;' : ''}">
@@ -5665,6 +6115,7 @@ HTML_TEMPLATE = """
                                     title="Dettaglio Giocatore" style="background:transparent; border:none; cursor:pointer; font-size:0.82rem; padding:0 2px; opacity:0.65; transition:opacity 0.2s;"
                                     onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.65'">ℹ️</button>
                                 <small style="color:var(--text-muted); font-weight:600;">(${p.team})</small>
+                                ${medBadge}
                                 ${isStarter ? `<span class="scout-tag-starter">✓ Titolare</span>` : ''}
                                 ${isTarget ? `<span class="tier-badge tier-${targetInfo.priority}">T${targetInfo.priority} (Max ${targetInfo.max_price}cr)</span>` : ''}
                                 ${isAssigned ? `<span style="color:var(--danger); font-size:0.75rem; font-weight:700; margin-left:4px;">ASSEGNATO (${assignmentInfo.team_name || ''} - ${assignmentInfo.price || ''} cr)</span>` : ''}

@@ -176,6 +176,40 @@ def main():
     test("HTML contiene 'settingForceReset'", "settingForceReset" in html)
     test("HTML contiene 'ℹ️' dettaglio icona", "ℹ️" in html or "Dettaglio Giocatore" in html)
 
+    # ── 11. Entity-First Retrieval (Thuram & Woltemade) ────────────────
+    print("\n▸ 11. Entity-First Copilot Retrieval — Thuram & Woltemade")
+    r_copilot_comp = requests.post(f"{BASE_URL}/api/ai_query", json={"prompt": "parlami di thuram e woltemade", "profile_id": 1}, timeout=25)
+    test("POST /api/ai_query comparison → 200", r_copilot_comp.status_code == 200)
+    comp_json = r_copilot_comp.json()
+    test("Risposta confronto non vuota", bool(comp_json))
+    comp_players = [p.get("name", "").lower() for p in comp_json.get("players", [])]
+    test("Confronto contiene 'thuram'", any("thuram" in p for p in comp_players) or "thuram" in str(comp_json).lower())
+    test("Confronto contiene 'woltemade'", any("woltemade" in p for p in comp_players) or "woltemade" in str(comp_json).lower())
+
+    r_copilot_single = requests.post(f"{BASE_URL}/api/ai_query", json={"prompt": "chi è woltemade?", "profile_id": 1}, timeout=25)
+    test("POST /api/ai_query single player → 200", r_copilot_single.status_code == 200)
+    single_json = r_copilot_single.json()
+    test("Single player Woltemade riconosciuto", "woltemade" in str(single_json).lower())
+
+    # ── 12. Finestra Medica Drawer Fix ────────────────────────────────
+    print("\n▸ 12. Finestra Medica Drawer — No cachedPlayers ReferenceError")
+    test("Nessun 'cachedPlayers' non definito in HTML", "cachedPlayers" not in html)
+    test("HTML contiene 'medical-badge'", "medical-badge" in html)
+    test("Listone include badge medico integro/infortunato", "Finestra Medica:" in html)
+
+    # ── 13. Slot-Based 'I Miei Target' Architecture ───────────────────
+    print("\n▸ 13. 'I Miei Target' — Architettura a Slot per Ruolo & HUD Finanziario")
+    test("HTML contiene 'targetRolesContainer'", "targetRolesContainer" in html)
+    test("HTML contiene 'targetBudgetTotal'", "targetBudgetTotal" in html)
+    test("HTML contiene 'targetEstSpendFair'", "targetEstSpendFair" in html)
+    test("HTML contiene 'targetEstSpendMax'", "targetEstSpendMax" in html)
+    test("HTML contiene 'targetEstRemaining'", "targetEstRemaining" in html)
+    test("HTML contiene 'targetSlotsProgress'", "targetSlotsProgress" in html)
+    test("HTML contiene 'assignPlayerToTargetSlot'", "assignPlayerToTargetSlot" in html)
+    test("HTML contiene 'vacateTargetSlot'", "vacateTargetSlot" in html)
+    test("HTML contiene 'toggleTargetSlotCandidates'", "toggleTargetSlotCandidates" in html)
+    test("HTML contiene 'clearAllTargetSlots'", "clearAllTargetSlots" in html)
+
     # ── SUMMARY ───────────────────────────────────────────────────────
     print("\n" + "=" * 72)
     passed = sum(1 for _, s, _ in results if s == PASS)
