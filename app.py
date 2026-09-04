@@ -3625,25 +3625,37 @@ HTML_TEMPLATE = """
             <!-- Department Budget Allocation -->
             <div style="background:#0b111e; border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:12px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                    <b style="font-size:0.85rem; color:var(--primary);">Budget Reparti (Totale 1000 cr)</b>
+                    <b id="customAllocBudgetTitle" style="font-size:0.85rem; color:var(--primary);">Budget Reparti</b>
                     <span id="customAllocTotalBadge" style="font-size:0.75rem; font-weight:800; color:var(--gold);">1000 / 1000 cr</span>
                 </div>
                 <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:6px;">
                     <div>
-                        <label style="font-size:0.68rem; color:var(--role-p); font-weight:700;">POR (cr)</label>
-                        <input type="number" id="cfgSplitP" value="80" min="4" max="300" oninput="updateCustomAllocTotal()" style="margin-bottom:0; padding:6px 8px; font-size:0.85rem; text-align:center;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">
+                            <label style="font-size:0.68rem; color:var(--role-p); font-weight:700; margin-bottom:0;">POR (cr)</label>
+                            <small id="cfgSplitP_pct" style="font-size:0.65rem; color:var(--text-muted); font-weight:700;">8%</small>
+                        </div>
+                        <input type="number" id="cfgSplitP" value="80" min="4" max="1000" oninput="updateCustomAllocTotal()" style="margin-bottom:0; padding:6px 8px; font-size:0.85rem; text-align:center;">
                     </div>
                     <div>
-                        <label style="font-size:0.68rem; color:var(--role-d); font-weight:700;">DIF (cr)</label>
-                        <input type="number" id="cfgSplitD" value="120" min="9" max="400" oninput="updateCustomAllocTotal()" style="margin-bottom:0; padding:6px 8px; font-size:0.85rem; text-align:center;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">
+                            <label style="font-size:0.68rem; color:var(--role-d); font-weight:700; margin-bottom:0;">DIF (cr)</label>
+                            <small id="cfgSplitD_pct" style="font-size:0.65rem; color:var(--text-muted); font-weight:700;">12%</small>
+                        </div>
+                        <input type="number" id="cfgSplitD" value="120" min="9" max="1000" oninput="updateCustomAllocTotal()" style="margin-bottom:0; padding:6px 8px; font-size:0.85rem; text-align:center;">
                     </div>
                     <div>
-                        <label style="font-size:0.68rem; color:var(--role-c); font-weight:700;">CEN (cr)</label>
-                        <input type="number" id="cfgSplitC" value="250" min="9" max="500" oninput="updateCustomAllocTotal()" style="margin-bottom:0; padding:6px 8px; font-size:0.85rem; text-align:center;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">
+                            <label style="font-size:0.68rem; color:var(--role-c); font-weight:700; margin-bottom:0;">CEN (cr)</label>
+                            <small id="cfgSplitC_pct" style="font-size:0.65rem; color:var(--text-muted); font-weight:700;">25%</small>
+                        </div>
+                        <input type="number" id="cfgSplitC" value="250" min="9" max="1000" oninput="updateCustomAllocTotal()" style="margin-bottom:0; padding:6px 8px; font-size:0.85rem; text-align:center;">
                     </div>
                     <div>
-                        <label style="font-size:0.68rem; color:var(--role-a); font-weight:700;">ATT (cr)</label>
-                        <input type="number" id="cfgSplitA" value="550" min="7" max="800" oninput="updateCustomAllocTotal()" style="margin-bottom:0; padding:6px 8px; font-size:0.85rem; text-align:center;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">
+                            <label style="font-size:0.68rem; color:var(--role-a); font-weight:700; margin-bottom:0;">ATT (cr)</label>
+                            <small id="cfgSplitA_pct" style="font-size:0.65rem; color:var(--text-muted); font-weight:700;">55%</small>
+                        </div>
+                        <input type="number" id="cfgSplitA" value="550" min="7" max="1000" oninput="updateCustomAllocTotal()" style="margin-bottom:0; padding:6px 8px; font-size:0.85rem; text-align:center;">
                     </div>
                 </div>
             </div>
@@ -5540,7 +5552,17 @@ HTML_TEMPLATE = """
 
                     const slotCfg = getSlotTacticConfig(role, i);
                     const slotName = slotCfg.name || `Slot #${i + 1}`;
-                    const slotTargetBudget = slotCfg.target_budget ? ` • Target: ${slotCfg.target_budget}` : '';
+                    const activeBudget = auctionState.budget_total || leagueBudget || 1000;
+                    const tactic = getActiveTactic();
+                    const scaleRatio = activeBudget / ((tactic && tactic.budget_base) || 1000.0);
+                    let targetBudgetDisp = slotCfg.target_budget;
+                    if (scaleRatio !== 1.0 && targetBudgetDisp && targetBudgetDisp.includes('-')) {
+                        const parts = targetBudgetDisp.replace(' cr', '').split('-');
+                        const low = Math.max(1, Math.round(parseInt(parts[0], 10) * scaleRatio));
+                        const high = Math.max(1, Math.round(parseInt(parts[1], 10) * scaleRatio));
+                        targetBudgetDisp = `${low}-${high} cr`;
+                    }
+                    const slotTargetBudget = targetBudgetDisp ? ` • Target: ${targetBudgetDisp}` : '';
                     const fasciaHint = `${slotName}${slotTargetBudget}`;
 
                     let pillsHtml = '';
@@ -5718,18 +5740,66 @@ HTML_TEMPLATE = """
             renderStrategyTab();
         }
 
+        let currentCustomModalDraft = null;
+
         function openCustomConfigModal() {
-            const customCfg = getCustomTacticConfig() || tacticalPresets['custom'];
-            if (!customCfg) return;
+            const rawCfg = getCustomTacticConfig() || tacticalPresets['custom'];
+            if (!rawCfg) return;
 
-            // Load splits
-            const split = customCfg.split || {};
-            const parseNum = (str, def) => parseInt(String(str)) || def;
+            currentCustomModalDraft = JSON.parse(JSON.stringify(rawCfg));
 
-            document.getElementById('cfgSplitP').value = parseNum(split.P, 80);
-            document.getElementById('cfgSplitD').value = parseNum(split.D, 120);
-            document.getElementById('cfgSplitC').value = parseNum(split.C, 250);
-            document.getElementById('cfgSplitA').value = parseNum(split.A, 550);
+            const activeBudget = auctionState.budget_total || leagueBudget || 1000;
+            const titleEl = document.getElementById('customAllocBudgetTitle');
+            if (titleEl) titleEl.textContent = `Budget Reparti (Totale ${activeBudget} cr)`;
+
+            // Prefer split_pct if available, otherwise compute from credits/split or default
+            let pct = currentCustomModalDraft.split_pct;
+            if (!pct && currentCustomModalDraft.split) {
+                let credits = {};
+                let totCr = 0;
+                ['P', 'D', 'C', 'A'].forEach(r => {
+                    const m = String(currentCustomModalDraft.split[r] || '').match(/^(\\d+)\\s*cr/);
+                    const cVal = m ? parseInt(m[1], 10) : 0;
+                    credits[r] = cVal;
+                    totCr += cVal;
+                });
+                if (totCr > 0) {
+                    pct = {
+                        P: credits.P / totCr,
+                        D: credits.D / totCr,
+                        C: credits.C / totCr,
+                        A: credits.A / totCr
+                    };
+                }
+            }
+            if (!pct || !pct.P) {
+                pct = { P: 0.08, D: 0.12, C: 0.25, A: 0.55 };
+            }
+
+            // Normalize base budget for slots if draft was defined on a different budget base
+            const prevBudgetBase = currentCustomModalDraft.budget_base || 1000;
+            if (prevBudgetBase !== activeBudget && currentCustomModalDraft.slots) {
+                const ratio = activeBudget / prevBudgetBase;
+                ['P', 'D', 'C', 'A'].forEach(r => {
+                    (currentCustomModalDraft.slots[r] || []).forEach(s => {
+                        if (s.max_limit) {
+                            s.max_limit = Math.max(1, Math.round(s.max_limit * ratio));
+                        }
+                        if (s.target_budget && s.target_budget.includes('-')) {
+                            const parts = s.target_budget.replace(' cr', '').split('-');
+                            const low = Math.max(1, Math.round(parseInt(parts[0], 10) * ratio));
+                            const high = Math.max(1, Math.round(parseInt(parts[1], 10) * ratio));
+                            s.target_budget = `${low}-${high} cr`;
+                        }
+                    });
+                });
+            }
+            currentCustomModalDraft.budget_base = activeBudget;
+
+            document.getElementById('cfgSplitP').value = Math.round(activeBudget * (pct.P || 0.08));
+            document.getElementById('cfgSplitD').value = Math.round(activeBudget * (pct.D || 0.12));
+            document.getElementById('cfgSplitC').value = Math.round(activeBudget * (pct.C || 0.25));
+            document.getElementById('cfgSplitA').value = Math.round(activeBudget * (pct.A || 0.55));
 
             updateCustomAllocTotal();
             setCustomModalRole(customModalRole || 'A');
@@ -5740,25 +5810,61 @@ HTML_TEMPLATE = """
             document.getElementById('customConfigModal').style.display = 'none';
         }
 
+        function syncCustomModalCurrentRoleSlots() {
+            if (!currentCustomModalDraft || !customModalRole) return;
+            const role = customModalRole;
+            const slots = (currentCustomModalDraft.slots && currentCustomModalDraft.slots[role]) || [];
+            slots.forEach((s, idx) => {
+                const nameEl = document.getElementById(`customSlotName_${role}_${idx}`);
+                const targetEl = document.getElementById(`customSlotTarget_${role}_${idx}`);
+                const maxEl = document.getElementById(`customSlotMax_${role}_${idx}`);
+                const fasciaEl = document.getElementById(`customSlotFascia_${role}_${idx}`);
+
+                if (nameEl) s.name = nameEl.value.trim();
+                if (targetEl) s.target_budget = targetEl.value.trim();
+                if (maxEl) s.max_limit = parseInt(maxEl.value, 10) || s.max_limit;
+                if (fasciaEl) s.fascia = parseInt(fasciaEl.value, 10) || s.fascia;
+            });
+        }
+
         function updateCustomAllocTotal() {
+            const activeBudget = auctionState.budget_total || leagueBudget || 1000;
             const p = parseInt(document.getElementById('cfgSplitP').value) || 0;
             const d = parseInt(document.getElementById('cfgSplitD').value) || 0;
             const c = parseInt(document.getElementById('cfgSplitC').value) || 0;
             const a = parseInt(document.getElementById('cfgSplitA').value) || 0;
             const tot = p + d + c + a;
 
+            const pctP = activeBudget > 0 ? Math.round((p / activeBudget) * 100) : 0;
+            const pctD = activeBudget > 0 ? Math.round((d / activeBudget) * 100) : 0;
+            const pctC = activeBudget > 0 ? Math.round((c / activeBudget) * 100) : 0;
+            const pctA = activeBudget > 0 ? Math.round((a / activeBudget) * 100) : 0;
+
+            const elPctP = document.getElementById('cfgSplitP_pct');
+            const elPctD = document.getElementById('cfgSplitD_pct');
+            const elPctC = document.getElementById('cfgSplitC_pct');
+            const elPctA = document.getElementById('cfgSplitA_pct');
+            if (elPctP) elPctP.textContent = `${pctP}%`;
+            if (elPctD) elPctD.textContent = `${pctD}%`;
+            if (elPctC) elPctC.textContent = `${pctC}%`;
+            if (elPctA) elPctA.textContent = `${pctA}%`;
+
             const badge = document.getElementById('customAllocTotalBadge');
-            badge.textContent = `${tot} / 1000 cr`;
-            if (tot === 1000) {
-                badge.style.color = 'var(--success)';
-            } else if (tot > 1000) {
-                badge.style.color = 'var(--danger)';
-            } else {
-                badge.style.color = 'var(--gold)';
+            const totPct = activeBudget > 0 ? Math.round((tot / activeBudget) * 100) : 100;
+            if (badge) {
+                badge.textContent = `${tot} / ${activeBudget} cr (${totPct}%)`;
+                if (tot === activeBudget) {
+                    badge.style.color = 'var(--success)';
+                } else if (tot > activeBudget) {
+                    badge.style.color = 'var(--danger)';
+                } else {
+                    badge.style.color = 'var(--gold)';
+                }
             }
         }
 
         function setCustomModalRole(role) {
+            syncCustomModalCurrentRoleSlots();
             customModalRole = role;
             const pills = document.querySelectorAll('#customModalRolePills .pill');
             const roles = ['A', 'C', 'D', 'P'];
@@ -5770,8 +5876,7 @@ HTML_TEMPLATE = """
         }
 
         function renderCustomModalSlots(role) {
-            const customCfg = getCustomTacticConfig() || tacticalPresets['custom'];
-            const slots = (customCfg && customCfg.slots && customCfg.slots[role]) || [];
+            const slots = (currentCustomModalDraft && currentCustomModalDraft.slots && currentCustomModalDraft.slots[role]) || [];
             const container = document.getElementById('customModalSlotsContainer');
 
             container.innerHTML = slots.map((s, idx) => `
@@ -5787,7 +5892,7 @@ HTML_TEMPLATE = """
                         </div>
                         <div>
                             <label style="color:var(--danger); display:block; font-size:0.65rem; font-weight:700;">Stop-Loss (cr)</label>
-                            <input type="number" id="customSlotMax_${role}_${idx}" value="${s.max_limit || 2}" min="1" max="600" style="margin-bottom:0; padding:4px 6px; font-size:0.75rem;">
+                            <input type="number" id="customSlotMax_${role}_${idx}" value="${s.max_limit || 2}" min="1" max="1000" style="margin-bottom:0; padding:4px 6px; font-size:0.75rem;">
                         </div>
                         <div>
                             <label style="color:var(--text-muted); display:block; font-size:0.65rem;">Fascia / Profilo</label>
@@ -5804,36 +5909,37 @@ HTML_TEMPLATE = """
         }
 
         function saveCustomConfigFromModal() {
-            const customCfg = JSON.parse(JSON.stringify(getCustomTacticConfig() || tacticalPresets['custom']));
+            if (!currentCustomModalDraft) return;
+            syncCustomModalCurrentRoleSlots();
 
-            const p = parseInt(document.getElementById('cfgSplitP').value) || 80;
-            const d = parseInt(document.getElementById('cfgSplitD').value) || 120;
-            const c = parseInt(document.getElementById('cfgSplitC').value) || 250;
-            const a = parseInt(document.getElementById('cfgSplitA').value) || 550;
+            const activeBudget = auctionState.budget_total || leagueBudget || 1000;
 
-            customCfg.split = {
-                "P": `${p} cr (${Math.round(p/10)}%)`,
-                "D": `${d} cr (${Math.round(d/10)}%)`,
-                "C": `${c} cr (${Math.round(c/10)}%)`,
-                "A": `${a} cr (${Math.round(a/10)}%)`
+            const p = parseInt(document.getElementById('cfgSplitP').value, 10) || Math.round(activeBudget * 0.08);
+            const d = parseInt(document.getElementById('cfgSplitD').value, 10) || Math.round(activeBudget * 0.12);
+            const c = parseInt(document.getElementById('cfgSplitC').value, 10) || Math.round(activeBudget * 0.25);
+            const a = parseInt(document.getElementById('cfgSplitA').value, 10) || Math.round(activeBudget * 0.55);
+
+            const pctP = activeBudget > 0 ? (p / activeBudget) : 0.08;
+            const pctD = activeBudget > 0 ? (d / activeBudget) : 0.12;
+            const pctC = activeBudget > 0 ? (c / activeBudget) : 0.25;
+            const pctA = activeBudget > 0 ? (a / activeBudget) : 0.55;
+
+            currentCustomModalDraft.budget_base = activeBudget;
+            currentCustomModalDraft.split_pct = {
+                P: parseFloat(pctP.toFixed(4)),
+                D: parseFloat(pctD.toFixed(4)),
+                C: parseFloat(pctC.toFixed(4)),
+                A: parseFloat(pctA.toFixed(4))
             };
 
-            // Save slots for current modal role
-            const role = customModalRole;
-            const slots = customCfg.slots[role] || [];
-            slots.forEach((s, idx) => {
-                const nameEl = document.getElementById(`customSlotName_${role}_${idx}`);
-                const targetEl = document.getElementById(`customSlotTarget_${role}_${idx}`);
-                const maxEl = document.getElementById(`customSlotMax_${role}_${idx}`);
-                const fasciaEl = document.getElementById(`customSlotFascia_${role}_${idx}`);
+            currentCustomModalDraft.split = {
+                "P": `${p} cr (${Math.round(pctP * 100)}%)`,
+                "D": `${d} cr (${Math.round(pctD * 100)}%)`,
+                "C": `${c} cr (${Math.round(pctC * 100)}%)`,
+                "A": `${a} cr (${Math.round(pctA * 100)}%)`
+            };
 
-                if (nameEl) s.name = nameEl.value.trim();
-                if (targetEl) s.target_budget = targetEl.value.trim();
-                if (maxEl) s.max_limit = parseInt(maxEl.value) || s.max_limit;
-                if (fasciaEl) s.fascia = parseInt(fasciaEl.value) || s.fascia;
-            });
-
-            saveCustomTacticConfig(customCfg);
+            saveCustomTacticConfig(currentCustomModalDraft);
             closeCustomConfigModal();
             renderStrategyTab();
         }
@@ -5841,6 +5947,7 @@ HTML_TEMPLATE = """
         function resetCustomConfigToDefault() {
             if (confirm('Vuoi ripristinare la strategia personalizzata ai valori iniziali?')) {
                 localStorage.removeItem(getCustomTacticStorageKey());
+                currentCustomModalDraft = null;
                 openCustomConfigModal();
                 renderStrategyTab();
             }
@@ -5871,11 +5978,25 @@ HTML_TEMPLATE = """
             document.getElementById('tacticBadge').textContent = tactic.badge;
             document.getElementById('tacticDesc').textContent = tactic.description;
 
-            const split = tactic.split || {};
-            document.getElementById('splitPOR').textContent = split.P || '-';
-            document.getElementById('splitDIF').textContent = split.D || '-';
-            document.getElementById('splitCEN').textContent = split.C || '-';
-            document.getElementById('splitATT').textContent = split.A || '-';
+            const activeBudget = auctionState.budget_total || leagueBudget || 1000;
+            const splitPct = tactic.split_pct || { P: 0.08, D: 0.12, C: 0.25, A: 0.55 };
+
+            const getRoleSplitDisplay = (r) => {
+                let pct = splitPct[r];
+                if (pct === undefined && tactic.split) {
+                    const match = String(tactic.split[r] || '').match(/(\\d+(?:\\.\\d+)?)\\s*%/);
+                    if (match) pct = parseFloat(match[1]) / 100.0;
+                }
+                if (pct === undefined) pct = 0;
+                const cr = Math.round(activeBudget * pct);
+                const pctLabel = Math.round(pct * 100);
+                return `${cr} cr (${pctLabel}%)`;
+            };
+
+            document.getElementById('splitPOR').textContent = getRoleSplitDisplay('P');
+            document.getElementById('splitDIF').textContent = getRoleSplitDisplay('D');
+            document.getElementById('splitCEN').textContent = getRoleSplitDisplay('C');
+            document.getElementById('splitATT').textContent = getRoleSplitDisplay('A');
 
             const role = currentStratRole;
             const myRosterRole = (myTeam.roster || []).filter(p => p.role === role);
@@ -5900,9 +6021,7 @@ HTML_TEMPLATE = """
                     });
                 }
             }
-
-            const activeBudget = auctionState.budget_total || leagueBudget || 1000;
-            const scaleRatio = activeBudget / 1000.0;
+            const scaleRatio = activeBudget / ((tactic && tactic.budget_base) || 1000.0);
             const container = document.getElementById('strategySlotsContainer');
 
             const targetSlots = loadTargetSlots();
