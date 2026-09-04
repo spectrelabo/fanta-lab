@@ -4088,9 +4088,12 @@ HTML_TEMPLATE = """
         }
 
         // Close drawer on backdrop click
-        document.getElementById('playerDetailDrawer').addEventListener('click', function(e) {
-            if (e.target === this) closePlayerDetailDrawer();
-        });
+        const _detailDrawerEl = document.getElementById('playerDetailDrawer');
+        if (_detailDrawerEl) {
+            _detailDrawerEl.addEventListener('click', function(e) {
+                if (e.target === this) closePlayerDetailDrawer();
+            });
+        }
 
 
         /* ─────────────────────────────────────────────────────────────
@@ -4408,6 +4411,7 @@ HTML_TEMPLATE = """
             if (data.roster_structure) leagueRosterStructure = data.roster_structure;
             updateLeagueBadge();
             updateHeader();
+            renderListone();
         }
 
         function updateLeagueBadge() {
@@ -6633,6 +6637,13 @@ HTML_TEMPLATE = """
             });
 
             const container = document.getElementById('listoneContainer');
+            if (!container) return;
+
+            if (!allPlayers || allPlayers.length === 0) {
+                container.innerHTML = '<div class="card" style="text-align:center; color:var(--text-muted); padding:24px;">Caricamento calciatori in corso...</div>';
+                return;
+            }
+
             if (filtered.length === 0) {
                 container.innerHTML = '<div class="card" style="text-align:center; color:var(--text-muted); padding:24px;">Nessun calciatore trovato con i filtri selezionati.</div>';
                 return;
@@ -6648,6 +6659,7 @@ HTML_TEMPLATE = """
                 const fairScaled = p.price_fair_scaled || p.price_fair_1000;
 
                 const isStarter = p.is_starter_2627 === 1 || p.is_starter_2627 === true || p.is_starter_2627 === "1";
+                const medDays = (p.medical && p.medical.days_lost_3y) || 0;
                 const encPlayer = encodeURIComponent(p.player);
                 const medBadge = medDays >= 120 
                     ? `<span class="medical-badge medical-badge-danger" data-player="${encPlayer}" onclick="event.stopPropagation(); openPlayerDetailDrawer(decodeURIComponent(this.getAttribute('data-player')))" title="Finestra Medica: ${medDays} gg infortunio (3 anni)">🔴 ${medDays}gg</span>`
