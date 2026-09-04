@@ -60,7 +60,7 @@ class OllamaProvider(CopilotProvider):
             "max_tokens": max_tokens
         }
 
-        resp = requests.post(endpoint, json=payload, headers=headers, timeout=12)
+        resp = requests.post(endpoint, json=payload, headers=headers, timeout=4)
         if resp.status_code == 200:
             return resp.json().get("choices", [{}])[0].get("message", {}).get("content", "").strip()
         return None
@@ -127,7 +127,7 @@ class GeminiProvider(CopilotProvider):
                 }
             }
             try:
-                resp = requests.post(url, json=payload, timeout=12)
+                resp = requests.post(url, json=payload, timeout=4)
                 if resp.status_code == 200:
                     self.engine_name = f"Gemini ({candidate})"
                     return (resp.json()

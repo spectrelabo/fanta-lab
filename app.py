@@ -4398,14 +4398,6 @@ HTML_TEMPLATE = """
             renderListone();
         }
 
-        function setTargetRoleFilter(role) {
-            currentTargetRoleFilter = role;
-            document.querySelectorAll('#targetRolePills .pill').forEach(el => {
-                el.classList.toggle('active', el.textContent.includes(role === 'ALL' ? 'Tutti' : role === 'P' ? 'Portieri' : role === 'D' ? 'Difensori' : role === 'C' ? 'Centrocampisti' : 'Attaccanti'));
-            });
-            renderTargetsTab();
-        }
-
         function setStratRole(role) {
             currentStratRole = role;
             document.querySelectorAll('#stratRolePills .pill').forEach(el => {
@@ -5033,7 +5025,6 @@ HTML_TEMPLATE = """
         /* ─────────────────────────────────────────────────────────────
            TARGETS & WISHLIST MANAGEMENT (SLOT-BASED ROSTER PLANNER)
         ───────────────────────────────────────────────────────────── */
-        let currentTargetRoleFilter = 'ALL';
         let expandedTargetSlot = null; // e.g. "P_0", "D_3"
         let targetCandidateSearch = '';
         let targetCandidateFascia = 0; // 0 = all

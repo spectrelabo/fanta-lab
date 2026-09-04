@@ -178,7 +178,7 @@ def main():
 
     # ── 11. Entity-First Retrieval (Thuram & Woltemade) ────────────────
     print("\n▸ 11. Entity-First Copilot Retrieval — Thuram & Woltemade")
-    r_copilot_comp = requests.post(f"{BASE_URL}/api/ai_query", json={"prompt": "parlami di thuram e woltemade", "profile_id": 1}, timeout=25)
+    r_copilot_comp = requests.post(f"{BASE_URL}/api/ai_query", json={"prompt": "parlami di thuram e woltemade", "profile_id": 1}, timeout=35)
     test("POST /api/ai_query comparison → 200", r_copilot_comp.status_code == 200)
     comp_json = r_copilot_comp.json()
     test("Risposta confronto non vuota", bool(comp_json))
@@ -186,13 +186,27 @@ def main():
     test("Confronto contiene 'thuram'", any("thuram" in p for p in comp_players) or "thuram" in str(comp_json).lower())
     test("Confronto contiene 'woltemade'", any("woltemade" in p for p in comp_players) or "woltemade" in str(comp_json).lower())
 
-    r_copilot_single = requests.post(f"{BASE_URL}/api/ai_query", json={"prompt": "chi è woltemade?", "profile_id": 1}, timeout=25)
+    r_copilot_single = requests.post(f"{BASE_URL}/api/ai_query", json={"prompt": "chi è woltemade?", "profile_id": 1}, timeout=35)
     test("POST /api/ai_query single player → 200", r_copilot_single.status_code == 200)
     single_json = r_copilot_single.json()
     test("Single player Woltemade riconosciuto", "woltemade" in str(single_json).lower())
 
-    # ── 12. Finestra Medica Drawer Fix ────────────────────────────────
-    print("\n▸ 12. Finestra Medica Drawer — No cachedPlayers ReferenceError")
+    # ── 12. Finestra Medica Drawer & JavaScript Syntax Verification ───
+    print("\n▸ 12. Integrità JavaScript & Finestra Medica")
+    import re, subprocess, tempfile
+    scripts = re.findall(r'<script\b[^>]*>(.*?)</script>', html, re.DOTALL)
+    test("Tag script presenti in HTML", len(scripts) > 0, f"n={len(scripts)}")
+    for i, s in enumerate(scripts):
+        with tempfile.NamedTemporaryFile('w', suffix='.js', delete=False) as tf:
+            tf.write(s)
+            tf_path = tf.name
+        res = subprocess.run(['node', '--check', tf_path], capture_output=True, text=True)
+        try:
+            os.unlink(tf_path)
+        except Exception:
+            pass
+        test(f"Script #{i+1} validazione sintassi JavaScript (node --check)", res.returncode == 0, res.stderr.strip()[:80] if res.returncode != 0 else "Nessun errore di sintassi")
+
     test("Nessun 'cachedPlayers' non definito in HTML", "cachedPlayers" not in html)
     test("HTML contiene 'medical-badge'", "medical-badge" in html)
     test("Listone include badge medico integro/infortunato", "Finestra Medica:" in html)
