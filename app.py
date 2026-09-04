@@ -591,6 +591,16 @@ def load_state():
                 st_team["name"] = settings_teams[i]["name"]
                 st_team["is_me"] = settings_teams[i].get("is_me", False)
 
+            # Deduplicate roster to clean up any corrupted duplicate records
+            seen_p = set()
+            cleaned_roster = []
+            for p_item in st_team.get("roster", []):
+                p_name = p_item.get("player")
+                if p_name and p_name not in seen_p:
+                    seen_p.add(p_name)
+                    cleaned_roster.append(p_item)
+            st_team["roster"] = cleaned_roster
+
             recalculate_team_metrics(st_team, settings_budget, settings_slots)
             updated_teams.append(st_team)
 
@@ -1069,6 +1079,14 @@ def api_assign():
     team = next((t for t in state["teams"] if t["id"] == team_id), None)
     if not team:
         return jsonify({"error": "Squadra non trovata"}), 404
+
+    if player_name in state.get("assigned_players", {}):
+        assigned_to = state["assigned_players"][player_name].get("team_name", "un'altra squadra")
+        return jsonify({"error": f"{player_name} è già stato assegnato a {assigned_to}!"}), 400
+
+    for t in state.get("teams", []):
+        if any(p.get("player") == player_name for p in t.get("roster", [])):
+            return jsonify({"error": f"{player_name} è già presente nella rosa di {t.get('name', 'una squadra')}!"}), 400
 
     role = p_row["role"]
     roster_structure = state.get("roster_structure", DEFAULT_ROSTER_SLOTS)
@@ -2385,6 +2403,7 @@ HTML_TEMPLATE = """
 
         /* Modal Overlay */
         .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 2000; display: none; justify-content: center; align-items: center; padding: 16px; }
+        .modal-backdrop.active { display: flex !important; }
         .modal-box { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; width: 100%; max-width: 520px; padding: 20px; max-height: 90vh; overflow-y: auto; }
         .modal-title { font-size: 1.15rem; font-weight: 700; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; }
 
@@ -3402,8 +3421,11 @@ HTML_TEMPLATE = """
                 <button class="btn btn-danger" style="width:35%;" onclick="removeActiveTarget()">Rimuovi</button>
                 <button class="btn btn-primary" style="width:65%;" onclick="saveActiveTarget()">Salva Target</button>
             </div>
+        </div>
+    </div>
+
     <!-- PITCH PLAYER PICKER MODAL -->
-    <div id="pitchPlayerPickerModal" class="modal-backdrop">
+    <div id="pitchPlayerPickerModal" class="modal-backdrop" style="display:none;">
         <div class="modal-box" style="max-width:480px; max-height:85vh; display:flex; flex-direction:column;">
             <div class="modal-title" style="margin-bottom:6px;">
                 <span id="pitchPickerTitle">Schiera Titolare</span>
@@ -3928,8 +3950,12 @@ HTML_TEMPLATE = """
         let _currentDetailPlayer = null;
 
         function openPlayerDetailDrawer(playerName) {
-            const p = (typeof allPlayers !== 'undefined' ? allPlayers : []).find(x => x.player === playerName);
-            if (!p) return;
+            const p = (typeof allPlayers !== 'undefined' ? allPlayers : []).find(x => x.player === playerName) ||
+                      (typeof allPlayers !== 'undefined' ? allPlayers : []).find(x => (x.player || '').trim().toLowerCase() === (playerName || '').trim().toLowerCase());
+            if (!p) {
+                console.warn('Player not found for detail drawer:', playerName);
+                return;
+            }
             _currentDetailPlayer = p;
 
             // Header
@@ -4025,16 +4051,25 @@ HTML_TEMPLATE = """
 
             // Show drawer with slide animation
             const drawer = document.getElementById('playerDetailDrawer');
-            drawer.style.display = 'flex';
-            requestAnimationFrame(() => {
-                document.getElementById('playerDetailPanel').style.right = '0px';
-            });
+            if (drawer) {
+                drawer.style.display = 'flex';
+                drawer.classList.add('active');
+                requestAnimationFrame(() => {
+                    const panel = document.getElementById('playerDetailPanel');
+                    if (panel) panel.style.right = '0px';
+                });
+            }
         }
 
         function closePlayerDetailDrawer() {
-            document.getElementById('playerDetailPanel').style.right = '-480px';
+            const panel = document.getElementById('playerDetailPanel');
+            if (panel) panel.style.right = '-480px';
             setTimeout(() => {
-                document.getElementById('playerDetailDrawer').style.display = 'none';
+                const drawer = document.getElementById('playerDetailDrawer');
+                if (drawer) {
+                    drawer.style.display = 'none';
+                    drawer.classList.remove('active');
+                }
             }, 350);
             _currentDetailPlayer = null;
         }
@@ -6122,24 +6157,39 @@ HTML_TEMPLATE = """
             '5-4-1': { P: 1, D: 5, C: 4, A: 1 }
         };
 
+        function getActivePitchTeamId() {
+            if (typeof currentSelectedTeamId !== 'undefined' && currentSelectedTeamId && currentSelectedTeamId !== 'ALL') {
+                return currentSelectedTeamId;
+            }
+            if (typeof activeProfileId !== 'undefined' && activeProfileId) {
+                return activeProfileId;
+            }
+            const teams = (auctionState && auctionState.teams) || [];
+            return teams.length > 0 ? teams[0].id : 'default';
+        }
+
         function getActivePitchFormation() {
-            return localStorage.getItem('fanta_pitch_formation_' + activeProfileId) || '3-4-3';
+            const tid = getActivePitchTeamId();
+            return localStorage.getItem('fanta_pitch_formation_' + tid) || '3-4-3';
         }
 
         function onPitchFormationChange(newForm) {
             if (!PITCH_FORMATIONS[newForm]) newForm = '3-4-3';
-            localStorage.setItem('fanta_pitch_formation_' + activeProfileId, newForm);
-            renderRose();
+            const tid = getActivePitchTeamId();
+            localStorage.setItem('fanta_pitch_formation_' + tid, newForm);
+            renderRosterTab();
         }
 
         function getPitchLineup() {
-            const raw = localStorage.getItem('fanta_pitch_lineup_' + activeProfileId);
+            const tid = getActivePitchTeamId();
+            const raw = localStorage.getItem('fanta_pitch_lineup_' + tid);
             if (!raw) return {};
             try { return JSON.parse(raw); } catch (e) { return {}; }
         }
 
         function setPitchLineup(lineup) {
-            localStorage.setItem('fanta_pitch_lineup_' + activeProfileId, JSON.stringify(lineup));
+            const tid = getActivePitchTeamId();
+            localStorage.setItem('fanta_pitch_lineup_' + tid, JSON.stringify(lineup));
         }
 
         function resetPitchLineup() {
@@ -6147,7 +6197,7 @@ HTML_TEMPLATE = """
             const allLineups = getPitchLineup();
             delete allLineups[formation];
             setPitchLineup(allLineups);
-            renderRose();
+            renderRosterTab();
         }
 
         function resolvePitchLineup(team, formation) {
@@ -6272,6 +6322,16 @@ HTML_TEMPLATE = """
             const hudFieldedCost = document.getElementById('hudFieldedCost');
             if (hudFieldedCost) hudFieldedCost.textContent = `${sumCost} cr`;
 
+            // Function to handle clicking on a pitch node safely
+            window.onPitchNodeClicked = function(el) {
+                const role = el.getAttribute('data-role');
+                const slot = parseInt(el.getAttribute('data-slot'), 10);
+                const playerRaw = el.getAttribute('data-player');
+                const player = (playerRaw && playerRaw.length > 0) ? decodeURIComponent(playerRaw) : null;
+                const formation = el.getAttribute('data-formation');
+                openPitchPlayerPickerModal(role, slot, player, formation);
+            };
+
             // Render each row on the 2D Pitch
             const renderPitchRow = (role, containerId) => {
                 const container = document.getElementById(containerId);
@@ -6284,8 +6344,9 @@ HTML_TEMPLATE = """
                         const p = s.player;
                         const shortName = p.player.length > 9 ? p.player.substring(0, 8) + '…' : p.player;
                         const pFm = p.mfv || p.mfv_hist || '6.0';
+                        const encPlayer = encodeURIComponent(p.player);
                         html += `
-                            <div class="pitch-node" onclick="openPitchPlayerPickerModal('${role}', ${idx}, '${p.player.replace(/'/g, "\\\\'")}', '${formation}')" title="${p.player} (${p.team}) - ${p.price} cr - FM: ${pFm} (Clicca per cambiare titolare)">
+                            <div class="pitch-node" data-role="${role}" data-slot="${idx}" data-player="${encPlayer}" data-formation="${formation}" onclick="onPitchNodeClicked(this)" title="${p.player} (${p.team}) - ${p.price} cr - FM: ${pFm} (Clicca per cambiare titolare)">
                                 <div class="pitch-jersey role-${role}">${role}</div>
                                 <div class="pitch-node-name">${shortName}</div>
                                 <div class="pitch-node-price">${p.price} cr <small style="color:#34d399;">(${pFm})</small></div>
@@ -6293,7 +6354,7 @@ HTML_TEMPLATE = """
                         `;
                     } else {
                         html += `
-                            <div class="pitch-node pitch-node-empty" onclick="openPitchPlayerPickerModal('${role}', ${idx}, null, '${formation}')" title="Clicca per scegliere un calciatore in questo slot">
+                            <div class="pitch-node pitch-node-empty" data-role="${role}" data-slot="${idx}" data-player="" data-formation="${formation}" onclick="onPitchNodeClicked(this)" title="Clicca per scegliere un calciatore in questo slot">
                                 <div class="pitch-jersey">+</div>
                                 <div class="pitch-node-name">+ Scegli</div>
                                 <div class="pitch-node-price" style="color:var(--text-muted); font-size:0.65rem;">${role} #${idx + 1}</div>
@@ -6315,8 +6376,12 @@ HTML_TEMPLATE = """
 
         function openPitchPlayerPickerModal(role, slotIndex, currentAssigned, formation) {
             currentPitchPicker = { role, slotIndex, currentAssigned, formation };
-            const team = (auctionState.teams || []).find(t => t.id === activeProfileId);
-            if (!team) return;
+            const tid = getActivePitchTeamId();
+            const team = (auctionState.teams || []).find(t => t.id === tid) || (auctionState.teams || []).find(t => t.id === activeProfileId) || (auctionState.teams || [])[0];
+            if (!team) {
+                console.warn('No team found for pitch picker modal');
+                return;
+            }
 
             const roleNameMap = { P: 'Portiere', D: 'Difensore', C: 'Centrocampista', A: 'Attaccante' };
             const titleEl = document.getElementById('pitchPickerTitle');
@@ -6365,6 +6430,7 @@ HTML_TEMPLATE = """
                     const isAssignedOtherSlot = assignedSlotIdx !== undefined && assignedSlotIdx !== slotIndex;
                     const pFm = p.mfv || p.mfv_hist || '6.0';
                     const pMv = p.mv || p.mv_hist || '6.0';
+                    const encPlayer = encodeURIComponent(p.player);
 
                     let statusBadge = '';
                     let actionBtn = '';
@@ -6374,10 +6440,10 @@ HTML_TEMPLATE = """
                         actionBtn = `<button class="btn btn-danger" style="width:auto; padding:4px 10px; font-size:0.75rem;" onclick="removePlayerFromPitchSlot()">Rimuovi</button>`;
                     } else if (isAssignedOtherSlot) {
                         statusBadge = `<span style="background:rgba(56,189,248,0.15); color:#38bdf8; font-size:0.72rem; padding:2px 8px; border-radius:4px; font-weight:700;">Titolare (Slot #${assignedSlotIdx + 1})</span>`;
-                        actionBtn = `<button class="btn btn-secondary" style="width:auto; padding:4px 10px; font-size:0.75rem;" onclick="selectPlayerForPitchSlot('${p.player.replace(/'/g, "\\\\'")}')">Scambia</button>`;
+                        actionBtn = `<button class="btn btn-secondary" style="width:auto; padding:4px 10px; font-size:0.75rem;" data-player="${encPlayer}" onclick="selectPlayerForPitchSlot(decodeURIComponent(this.getAttribute('data-player')))">Scambia</button>`;
                     } else {
                         statusBadge = `<span style="background:rgba(255,255,255,0.06); color:var(--text-muted); font-size:0.72rem; padding:2px 8px; border-radius:4px;">In Panchina</span>`;
-                        actionBtn = `<button class="btn btn-primary" style="width:auto; padding:4px 10px; font-size:0.75rem;" onclick="selectPlayerForPitchSlot('${p.player.replace(/'/g, "\\\\'")}')">Schiera</button>`;
+                        actionBtn = `<button class="btn btn-primary" style="width:auto; padding:4px 10px; font-size:0.75rem;" data-player="${encPlayer}" onclick="selectPlayerForPitchSlot(decodeURIComponent(this.getAttribute('data-player')))">Schiera</button>`;
                     }
 
                     return `
@@ -6405,12 +6471,18 @@ HTML_TEMPLATE = """
             }
 
             const modal = document.getElementById('pitchPlayerPickerModal');
-            if (modal) modal.classList.add('active');
+            if (modal) {
+                modal.style.display = 'flex';
+                modal.classList.add('active');
+            }
         }
 
         function closePitchPickerModal() {
             const modal = document.getElementById('pitchPlayerPickerModal');
-            if (modal) modal.classList.remove('active');
+            if (modal) {
+                modal.style.display = 'none';
+                modal.classList.remove('active');
+            }
         }
 
         function selectPlayerForPitchSlot(playerName) {
@@ -6432,7 +6504,7 @@ HTML_TEMPLATE = """
             setPitchLineup(allLineups);
 
             closePitchPickerModal();
-            renderRose();
+            renderRosterTab();
         }
 
         function removePlayerFromPitchSlot() {
@@ -6447,7 +6519,11 @@ HTML_TEMPLATE = """
             }
 
             closePitchPickerModal();
-            renderRose();
+            renderRosterTab();
+        }
+
+        function renderRose() {
+            renderRosterTab();
         }
 
         function renderRoleSlots(team, role, totalSlots, containerId) {
@@ -6572,23 +6648,23 @@ HTML_TEMPLATE = """
                 const fairScaled = p.price_fair_scaled || p.price_fair_1000;
 
                 const isStarter = p.is_starter_2627 === 1 || p.is_starter_2627 === true || p.is_starter_2627 === "1";
-                const medDays = (p.medical && p.medical.days_lost_3y) || 0;
+                const encPlayer = encodeURIComponent(p.player);
                 const medBadge = medDays >= 120 
-                    ? `<span class="medical-badge medical-badge-danger" onclick="event.stopPropagation(); openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')" title="Finestra Medica: ${medDays} gg infortunio (3 anni)">🔴 ${medDays}gg</span>`
+                    ? `<span class="medical-badge medical-badge-danger" data-player="${encPlayer}" onclick="event.stopPropagation(); openPlayerDetailDrawer(decodeURIComponent(this.getAttribute('data-player')))" title="Finestra Medica: ${medDays} gg infortunio (3 anni)">🔴 ${medDays}gg</span>`
                     : (medDays >= 30 
-                        ? `<span class="medical-badge medical-badge-warning" onclick="event.stopPropagation(); openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')" title="Finestra Medica: ${medDays} gg infortunio (3 anni)">🟡 ${medDays}gg</span>`
-                        : `<span class="medical-badge medical-badge-success" onclick="event.stopPropagation(); openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')" title="Finestra Medica: Integro (${medDays} gg infortunio)">🟢 Integro</span>`);
+                        ? `<span class="medical-badge medical-badge-warning" data-player="${encPlayer}" onclick="event.stopPropagation(); openPlayerDetailDrawer(decodeURIComponent(this.getAttribute('data-player')))" title="Finestra Medica: ${medDays} gg infortunio (3 anni)">🟡 ${medDays}gg</span>`
+                        : `<span class="medical-badge medical-badge-success" data-player="${encPlayer}" onclick="event.stopPropagation(); openPlayerDetailDrawer(decodeURIComponent(this.getAttribute('data-player')))" title="Finestra Medica: Integro (${medDays} gg infortunio)">🟢 Integro</span>`);
 
                 return `
                     <div class="player-row role-${p.role}" style="${isAssigned ? 'opacity:0.42;' : ''}">
                         <div class="player-info">
                             <div class="player-name">
-                                <button class="target-icon-btn ${isTarget ? 'active' : ''}" onclick="openTargetModal('${p.player.replace(/'/g, "\\\\'")}')" title="Aggiungi/Modifica Target">
+                                <button class="target-icon-btn ${isTarget ? 'active' : ''}" data-player="${encPlayer}" onclick="openTargetModal(decodeURIComponent(this.getAttribute('data-player')))" title="Aggiungi/Modifica Target">
                                     <svg class="nav-svg" style="width:14px; height:14px;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="2"></circle></svg>
                                 </button>
                                 <span class="badge badge-${p.role}">${p.role}</span>
-                                <span style="font-family:'Outfit',sans-serif; font-weight:700; font-size:1.05rem; cursor:pointer;" onclick="openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')"> ${p.player}</span>
-                                <button onclick="openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')"
+                                <span style="font-family:'Outfit',sans-serif; font-weight:700; font-size:1.05rem; cursor:pointer;" data-player="${encPlayer}" onclick="openPlayerDetailDrawer(decodeURIComponent(this.getAttribute('data-player')))"> ${p.player}</span>
+                                <button data-player="${encPlayer}" onclick="openPlayerDetailDrawer(decodeURIComponent(this.getAttribute('data-player')))"
                                     title="Dettaglio Giocatore" style="background:transparent; border:none; cursor:pointer; font-size:0.82rem; padding:0 2px; opacity:0.65; transition:opacity 0.2s;"
                                     onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.65'">ℹ️</button>
                                 <small style="color:var(--text-muted); font-weight:600;">(${p.team})</small>
