@@ -253,6 +253,35 @@ def main():
     test("HTML esclude giocatori già assegnati ad altri slot target", "slots[k] === p.player" in html)
     test("HTML renderStrategyTab esclude giocatori già targettati", "targetSlots[k] === p.player" in html)
 
+    # ── 16. Media Voto, Ordinamento Pulito & Modulo Tattico Campo ────
+    print("\n▸ 16. Media Voto, Pulizia Emoji e Modulo Tattico Interattivo 2D")
+    sample_p = players[0]
+    test("Calciatore include 'mv'", "mv" in sample_p, f"mv={sample_p.get('mv')}")
+    test("Calciatore include 'mfv'", "mfv" in sample_p, f"mfv={sample_p.get('mfv')}")
+    test("Calciatore include 'expected_matches'", "expected_matches" in sample_p, f"exp={sample_p.get('expected_matches')}")
+    test("Calciatore include 'bonus_range'", "bonus_range" in sample_p, f"bonus={sample_p.get('bonus_range')}")
+
+    test("listSortBy contiene opzione 'mv_desc'", 'value="mv_desc"' in html)
+    test("listSortBy contiene opzione 'mfv_desc'", 'value="mfv_desc"' in html)
+
+    # Verifica rimozione emoji in listSortBy
+    import re
+    sort_select_match = re.search(r'<select id="listSortBy"[^>]*>(.*?)</select>', html, re.DOTALL)
+    test("Selettore listSortBy trovato nell'HTML", sort_select_match is not None)
+    if sort_select_match:
+        sort_opts = sort_select_match.group(1)
+        has_emoji = any(em in sort_opts for em in ["⭐", "💰", "📉", "🎯", "🚀", "🔤", "⚽", "🔥"])
+        test("listSortBy non contiene emoji (design sobrio e pulito)", not has_emoji)
+
+    test("HTML contiene selettore modulo 'pitchFormationSelect'", "pitchFormationSelect" in html)
+    test("HTML contiene HUD 'pitchStatsHud'", "pitchStatsHud" in html)
+    test("HTML contiene modal 'pitchPlayerPickerModal'", "pitchPlayerPickerModal" in html)
+    test("HTML contiene funzione 'onPitchFormationChange'", "onPitchFormationChange" in html)
+    test("HTML contiene funzione 'openPitchPlayerPickerModal'", "openPitchPlayerPickerModal" in html)
+    test("HTML contiene funzione 'selectPlayerForPitchSlot'", "selectPlayerForPitchSlot" in html)
+    test("HTML contiene funzione 'resetPitchLineup'", "resetPitchLineup" in html)
+    test("HTML definisce PITCH_FORMATIONS con moduli (3-4-3, 4-3-3, etc.)", "PITCH_FORMATIONS" in html and "3-4-3" in html and "4-3-3" in html)
+
     # ── SUMMARY ───────────────────────────────────────────────────────
     print("\n" + "=" * 72)
     passed = sum(1 for _, s, _ in results if s == PASS)

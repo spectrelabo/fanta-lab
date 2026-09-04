@@ -907,6 +907,30 @@ def api_players():
         p90 = float(row.get("predicted_pts_p90", 0)) if pd.notna(row.get("predicted_pts_p90")) else 0.0
         spread = float(row.get("pts_volatility_spread", 0)) if pd.notna(row.get("pts_volatility_spread")) else round(p90 - p10, 1)
 
+        # Media Voto & FantaMedia
+        mv_val = round(float(row.get("mv_media_3y", 6.0)), 2) if pd.notna(row.get("mv_media_3y")) and float(row.get("mv_media_3y", 0)) > 0 else 6.0
+        mfv_val = round(float(row.get("mfv_media_3y", 6.0)), 2) if pd.notna(row.get("mfv_media_3y")) and float(row.get("mfv_media_3y", 0)) > 0 else 6.0
+
+        # Estimated appearances (partite a voto stimate)
+        expected_matches = min(38, max(5, int(round(p50 / max(4.5, mfv_val))))) if mfv_val > 0 else 28
+
+        # Bonus / Malus Range estimation (standard 28 gare baseline)
+        if row["role"] == "P":
+            diff = round(mv_val - mfv_val, 2)
+            malus_gs = int(round(diff * 28.0)) if diff > 0 else 0
+            bonus_range = f"Malus ~{malus_gs} gol subiti (28g)" if malus_gs > 0 else "Porta imbattuta frequente"
+        else:
+            ass_rate = float(row.get("ass_per_pg", 0)) if pd.notna(row.get("ass_per_pg")) else 0.0
+            gol_proj = round(gol_rate * 28.0, 1)
+            ass_proj = round(ass_rate * 28.0, 1)
+            bonus_pts_proj = gol_rate * 28.0 * 3.0 + ass_rate * 28.0 * 1.0
+            b_min = max(0, int(round(bonus_pts_proj * 0.8)))
+            b_max = max(1 if bonus_pts_proj > 0.5 else 0, int(round(bonus_pts_proj * 1.25 + 0.4)))
+            if b_max == 0:
+                bonus_range = "Bonus raro (+0 pt)"
+            else:
+                bonus_range = f"+{b_min}/+{b_max} pt (~{gol_proj:.0f}G, {ass_proj:.0f}A su 28g)"
+
         records.append({
             "player": p_name,
             "role": row["role"],
@@ -924,6 +948,10 @@ def api_players():
             "pts_ceil": p90,
             "pts_spread": spread,
             "vorp": vorp_val,
+            "mv": mv_val,
+            "mfv": mfv_val,
+            "expected_matches": expected_matches,
+            "bonus_range": bonus_range,
             "injury_days": days_lost,
             "injury_malus": float(row.get("malus_infortuni", 0)),
             "fascia": int(row["fascia"]),
@@ -3204,14 +3232,35 @@ HTML_TEMPLATE = """
 
                 <!-- TACTICAL FANTASY STADIUM PITCH (2D) -->
                 <div class="tactical-pitch-card">
-                    <div class="pitch-top-bar">
+                    <div class="pitch-top-bar" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                         <div class="pitch-title-badge">
                             <span>🏟️</span>
                             <span>Schieramento Tattico Rosa</span>
                         </div>
-                        <div style="font-size:0.75rem; color:var(--text-muted);">
-                            <span id="pitchFormationTitle" style="color:var(--primary); font-weight:700;">Formazione Live</span>
+                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                            <label for="pitchFormationSelect" style="font-size:0.75rem; color:var(--text-muted); font-weight:700;">Modulo:</label>
+                            <select id="pitchFormationSelect" onchange="onPitchFormationChange(this.value)" style="width:auto; margin-bottom:0; padding:4px 10px; font-size:0.8rem; font-weight:800; background:#0f172a; color:#38bdf8; border:1px solid rgba(56,189,248,0.3); border-radius:6px; cursor:pointer;" title="Cambia Modulo Tattico">
+                                <option value="3-4-3" selected>3-4-3</option>
+                                <option value="4-3-3">4-3-3</option>
+                                <option value="3-5-2">3-5-2</option>
+                                <option value="4-4-2">4-4-2</option>
+                                <option value="4-2-3-1">4-2-3-1</option>
+                                <option value="3-4-1-2">3-4-1-2</option>
+                                <option value="5-3-2">5-3-2</option>
+                                <option value="4-5-1">4-5-1</option>
+                                <option value="5-4-1">5-4-1</option>
+                            </select>
+                            <span id="pitchLegalityBadge" style="font-size:0.72rem; padding:3px 8px; border-radius:6px; font-weight:700;"></span>
                         </div>
+                    </div>
+                    
+                    <!-- 11 TITOLARE STATS HUD -->
+                    <div id="pitchStatsHud" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; padding:8px 12px; margin-bottom:10px; background:rgba(15,23,42,0.6); border-radius:8px; font-size:0.75rem; border:1px solid rgba(255,255,255,0.06);">
+                        <div>Titolari Schierati: <b id="hudFieldedCount" style="color:#ffffff;">0/11</b></div>
+                        <div>FantaMedia 11: <b id="hudFieldedFm" style="color:#34d399;">0.0</b></div>
+                        <div>Media Voto: <b id="hudFieldedMv" style="color:#38bdf8;">0.0</b></div>
+                        <div>Costo 11: <b id="hudFieldedCost" style="color:var(--gold);">0 cr</b></div>
+                        <button onclick="resetPitchLineup()" class="btn-secondary" style="width:auto; padding:2px 8px; font-size:0.7rem; margin-bottom:0;" title="Reimposta titolari automatici in base al rendimento">Auto-Fill</button>
                     </div>
                     
                     <div class="pitch-board" id="pitchBoard">
@@ -3299,12 +3348,14 @@ HTML_TEMPLATE = """
             <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap; align-items:center;">
                 <input type="text" id="listSearch" placeholder="Cerca calciatore o squadra..." oninput="renderListone()" style="margin-bottom:0; flex:1; min-width:160px;">
                 <select id="listSortBy" onchange="renderListone()" style="width:auto; margin-bottom:0; padding:8px 12px; font-size:0.82rem; font-weight:700; background:#0f172a; color:var(--text-main); border:1px solid var(--border); border-radius:6px; cursor:pointer;" title="Ordina calciatori">
-                    <option value="best" selected>⭐ Migliori (Score & VORP)</option>
-                    <option value="fair_desc">💰 Prezzo Fair (Più alti)</option>
-                    <option value="fair_asc">📉 Prezzo Fair (Più bassi / 1 cr)</option>
-                    <option value="pts_desc">🎯 Punti Attesi P50</option>
-                    <option value="vorp_desc">🚀 VORP (+ Valore)</option>
-                    <option value="alpha">🔤 Alfabetico (A-Z)</option>
+                    <option value="best" selected>Migliori (Score & VORP)</option>
+                    <option value="mv_desc">Media Voto (Più alta)</option>
+                    <option value="mfv_desc">FantaMedia (Più alta)</option>
+                    <option value="fair_desc">Prezzo Fair (Più alti)</option>
+                    <option value="fair_asc">Prezzo Fair (Più bassi / 1 cr)</option>
+                    <option value="pts_desc">Punti Attesi P50</option>
+                    <option value="vorp_desc">VORP (+ Valore)</option>
+                    <option value="alpha">Alfabetico (A-Z)</option>
                 </select>
                 <button class="btn-secondary" id="filterAvailableOnlyBtn" onclick="toggleFilterAvailableOnly()" style="width:auto; padding:0 12px; white-space:nowrap; font-size:0.8rem; font-weight:700;">
                     Solo Svincolati
@@ -3350,6 +3401,23 @@ HTML_TEMPLATE = """
             <div style="display:flex; gap:8px; margin-top:8px;">
                 <button class="btn btn-danger" style="width:35%;" onclick="removeActiveTarget()">Rimuovi</button>
                 <button class="btn btn-primary" style="width:65%;" onclick="saveActiveTarget()">Salva Target</button>
+            </div>
+    <!-- PITCH PLAYER PICKER MODAL -->
+    <div id="pitchPlayerPickerModal" class="modal-backdrop">
+        <div class="modal-box" style="max-width:480px; max-height:85vh; display:flex; flex-direction:column;">
+            <div class="modal-title" style="margin-bottom:6px;">
+                <span id="pitchPickerTitle">Schiera Titolare</span>
+                <button style="background:transparent; border:none; color:var(--text-muted); font-size:1.2rem; cursor:pointer;" onclick="closePitchPickerModal()">✕</button>
+            </div>
+            <div id="pitchPickerSubtitle" style="font-size:0.78rem; color:var(--text-muted); margin-bottom:12px;"></div>
+            
+            <div id="pitchPickerList" style="overflow-y:auto; flex:1; max-height:360px; display:flex; flex-direction:column; gap:8px; padding-right:4px;">
+                <!-- Dynamically populated from team roster -->
+            </div>
+            
+            <div style="margin-top:14px; display:flex; justify-content:space-between; align-items:center; gap:8px; border-top:1px solid var(--border); padding-top:10px;">
+                <button id="pitchPickerRemoveBtn" class="btn btn-danger" style="width:auto; padding:6px 14px; font-size:0.78rem;" onclick="removePlayerFromPitchSlot()">Libera Slot</button>
+                <button class="btn btn-secondary" style="width:auto; padding:6px 14px; font-size:0.78rem;" onclick="closePitchPickerModal()">Chiudi</button>
             </div>
         </div>
     </div>
@@ -6039,55 +6107,347 @@ HTML_TEMPLATE = """
             renderTacticalPitch(team, struct);
         }
 
-        function renderTacticalPitch(team, struct) {
+        /* ─────────────────────────────────────────────────────────────
+           TACTICAL FORMATIONS & INTERACTIVE 2D PITCH
+        ───────────────────────────────────────────────────────────── */
+        const PITCH_FORMATIONS = {
+            '3-4-3': { P: 1, D: 3, C: 4, A: 3 },
+            '4-3-3': { P: 1, D: 4, C: 3, A: 3 },
+            '3-5-2': { P: 1, D: 3, C: 5, A: 2 },
+            '4-4-2': { P: 1, D: 4, C: 4, A: 2 },
+            '4-2-3-1': { P: 1, D: 4, C: 5, A: 1 },
+            '3-4-1-2': { P: 1, D: 3, C: 5, A: 2 },
+            '5-3-2': { P: 1, D: 5, C: 3, A: 2 },
+            '4-5-1': { P: 1, D: 4, C: 5, A: 1 },
+            '5-4-1': { P: 1, D: 5, C: 4, A: 1 }
+        };
+
+        function getActivePitchFormation() {
+            return localStorage.getItem('fanta_pitch_formation_' + activeProfileId) || '3-4-3';
+        }
+
+        function onPitchFormationChange(newForm) {
+            if (!PITCH_FORMATIONS[newForm]) newForm = '3-4-3';
+            localStorage.setItem('fanta_pitch_formation_' + activeProfileId, newForm);
+            renderRose();
+        }
+
+        function getPitchLineup() {
+            const raw = localStorage.getItem('fanta_pitch_lineup_' + activeProfileId);
+            if (!raw) return {};
+            try { return JSON.parse(raw); } catch (e) { return {}; }
+        }
+
+        function setPitchLineup(lineup) {
+            localStorage.setItem('fanta_pitch_lineup_' + activeProfileId, JSON.stringify(lineup));
+        }
+
+        function resetPitchLineup() {
+            const formation = getActivePitchFormation();
+            const allLineups = getPitchLineup();
+            delete allLineups[formation];
+            setPitchLineup(allLineups);
+            renderRose();
+        }
+
+        function resolvePitchLineup(team, formation) {
+            const counts = PITCH_FORMATIONS[formation] || PITCH_FORMATIONS['3-4-3'];
+            const allLineups = getPitchLineup();
+            const savedSlots = allLineups[formation] || {};
             const roster = team.roster || [];
-            const playersByRole = {
-                P: roster.filter(p => p.role === 'P'),
-                D: roster.filter(p => p.role === 'D'),
-                C: roster.filter(p => p.role === 'C'),
-                A: roster.filter(p => p.role === 'A')
+
+            // Sort roster by mfv & score & pts_exp descending for smart auto-pick
+            const sortedRoster = [...roster].sort((a, b) => {
+                const aVal = (parseFloat(a.mfv) || 6.0) * 10 + (parseFloat(a.score) || 0) * 5 + (parseFloat(a.pts_exp) || 0) * 0.1;
+                const bVal = (parseFloat(b.mfv) || 6.0) * 10 + (parseFloat(b.score) || 0) * 5 + (parseFloat(b.pts_exp) || 0) * 0.1;
+                return bVal - aVal;
+            });
+
+            const usedPlayers = new Set();
+            const result = { P: [], D: [], C: [], A: [] };
+
+            ['P', 'D', 'C', 'A'].forEach(role => {
+                const need = counts[role] || 0;
+                const rolePool = sortedRoster.filter(p => p.role === role);
+
+                // First pass: fulfill explicit assignments
+                for (let i = 0; i < need; i++) {
+                    const slotKey = `${role}_${i}`;
+                    const explicitName = savedSlots[slotKey];
+                    if (explicitName && explicitName !== '__EMPTY__') {
+                        const match = rolePool.find(p => p.player === explicitName && !usedPlayers.has(p.player));
+                        if (match) {
+                            usedPlayers.add(match.player);
+                            result[role][i] = { slotKey, role, slotIndex: i, player: match, isEmpty: false };
+                        }
+                    }
+                }
+
+                // Second pass: fill remaining unassigned slots with top available roster players
+                for (let i = 0; i < need; i++) {
+                    if (result[role][i]) continue;
+                    const slotKey = `${role}_${i}`;
+                    const explicitName = savedSlots[slotKey];
+                    if (explicitName === '__EMPTY__') {
+                        result[role][i] = { slotKey, role, slotIndex: i, player: null, isEmpty: true };
+                        continue;
+                    }
+                    const bestAvailable = rolePool.find(p => !usedPlayers.has(p.player));
+                    if (bestAvailable) {
+                        usedPlayers.add(bestAvailable.player);
+                        result[role][i] = { slotKey, role, slotIndex: i, player: bestAvailable, isEmpty: false };
+                    } else {
+                        result[role][i] = { slotKey, role, slotIndex: i, player: null, isEmpty: true };
+                    }
+                }
+            });
+
+            return { lineup: result, counts };
+        }
+
+        function renderTacticalPitch(team, struct) {
+            const formation = getActivePitchFormation();
+            const formSelect = document.getElementById('pitchFormationSelect');
+            if (formSelect && formSelect.value !== formation) {
+                formSelect.value = formation;
+            }
+
+            const { lineup, counts } = resolvePitchLineup(team, formation);
+            const roster = team.roster || [];
+
+            // Check legality (fieldability) of the roster for this formation
+            const roleCounts = {
+                P: roster.filter(p => p.role === 'P').length,
+                D: roster.filter(p => p.role === 'D').length,
+                C: roster.filter(p => p.role === 'C').length,
+                A: roster.filter(p => p.role === 'A').length
             };
+            const missing = [];
+            if (roleCounts.P < counts.P) missing.push(`${counts.P - roleCounts.P}P`);
+            if (roleCounts.D < counts.D) missing.push(`${counts.D - roleCounts.D}D`);
+            if (roleCounts.C < counts.C) missing.push(`${counts.C - roleCounts.C}C`);
+            if (roleCounts.A < counts.A) missing.push(`${counts.A - roleCounts.A}A`);
 
-            const dCount = playersByRole.D.length;
-            const cCount = playersByRole.C.length;
-            const aCount = playersByRole.A.length;
-            const formTitle = `${Math.min(5, Math.max(3, dCount || 3))}-${Math.min(5, Math.max(3, cCount || 4))}-${Math.min(4, Math.max(2, aCount || 3))}`;
-            const formEl = document.getElementById('pitchFormationTitle');
-            if (formEl) formEl.textContent = `Modulo ${formTitle} (${roster.length} acquistati)`;
+            const legBadge = document.getElementById('pitchLegalityBadge');
+            if (legBadge) {
+                if (missing.length === 0 && roster.length >= 11) {
+                    legBadge.textContent = '✓ Modulo Schierabile';
+                    legBadge.style.background = 'rgba(16,185,129,0.18)';
+                    legBadge.style.color = '#34d399';
+                    legBadge.style.border = '1px solid rgba(16,185,129,0.3)';
+                } else {
+                    legBadge.textContent = `Mancano: ${missing.length ? missing.join(', ') : 'giocatori'}`;
+                    legBadge.style.background = 'rgba(239,68,68,0.15)';
+                    legBadge.style.color = '#f87171';
+                    legBadge.style.border = '1px solid rgba(239,68,68,0.3)';
+                }
+            }
 
-            const renderPitchLine = (role, containerId, maxDisplay) => {
+            // Calculate HUD statistics for fielded 11
+            let fieldedCount = 0;
+            let sumFM = 0;
+            let sumMV = 0;
+            let sumCost = 0;
+
+            ['P', 'D', 'C', 'A'].forEach(role => {
+                lineup[role].forEach(slot => {
+                    if (slot && !slot.isEmpty && slot.player) {
+                        fieldedCount++;
+                        sumFM += parseFloat(slot.player.mfv || slot.player.mfv_hist || 6.0);
+                        sumMV += parseFloat(slot.player.mv || slot.player.mv_hist || 6.0);
+                        sumCost += parseInt(slot.player.price || 1);
+                    }
+                });
+            });
+
+            const hudFieldedCount = document.getElementById('hudFieldedCount');
+            if (hudFieldedCount) hudFieldedCount.textContent = `${fieldedCount}/11`;
+
+            const hudFieldedFm = document.getElementById('hudFieldedFm');
+            if (hudFieldedFm) hudFieldedFm.textContent = fieldedCount > 0 ? (sumFM / fieldedCount).toFixed(2) : '0.0';
+
+            const hudFieldedMv = document.getElementById('hudFieldedMv');
+            if (hudFieldedMv) hudFieldedMv.textContent = fieldedCount > 0 ? (sumMV / fieldedCount).toFixed(2) : '0.0';
+
+            const hudFieldedCost = document.getElementById('hudFieldedCost');
+            if (hudFieldedCost) hudFieldedCost.textContent = `${sumCost} cr`;
+
+            // Render each row on the 2D Pitch
+            const renderPitchRow = (role, containerId) => {
                 const container = document.getElementById(containerId);
                 if (!container) return;
-                const players = playersByRole[role] || [];
+                const slots = lineup[role] || [];
                 let html = '';
 
-                players.slice(0, maxDisplay).forEach(p => {
-                    const shortName = p.player.length > 9 ? p.player.substring(0, 8) + '…' : p.player;
-                    html += `
-                        <div class="pitch-node" onclick="openTargetModal('${p.player.replace(/'/g, "\\\\'")}')" title="${p.player} (${p.team}) - ${p.price} cr">
-                            <div class="pitch-jersey role-${role}">${role}</div>
-                            <div class="pitch-node-name">${shortName}</div>
-                            <div class="pitch-node-price">${p.price} cr</div>
-                        </div>
-                    `;
+                slots.forEach((s, idx) => {
+                    if (!s.isEmpty && s.player) {
+                        const p = s.player;
+                        const shortName = p.player.length > 9 ? p.player.substring(0, 8) + '…' : p.player;
+                        const pFm = p.mfv || p.mfv_hist || '6.0';
+                        html += `
+                            <div class="pitch-node" onclick="openPitchPlayerPickerModal('${role}', ${idx}, '${p.player.replace(/'/g, "\\\\'")}', '${formation}')" title="${p.player} (${p.team}) - ${p.price} cr - FM: ${pFm} (Clicca per cambiare titolare)">
+                                <div class="pitch-jersey role-${role}">${role}</div>
+                                <div class="pitch-node-name">${shortName}</div>
+                                <div class="pitch-node-price">${p.price} cr <small style="color:#34d399;">(${pFm})</small></div>
+                            </div>
+                        `;
+                    } else {
+                        html += `
+                            <div class="pitch-node pitch-node-empty" onclick="openPitchPlayerPickerModal('${role}', ${idx}, null, '${formation}')" title="Clicca per scegliere un calciatore in questo slot">
+                                <div class="pitch-jersey">+</div>
+                                <div class="pitch-node-name">+ Scegli</div>
+                                <div class="pitch-node-price" style="color:var(--text-muted); font-size:0.65rem;">${role} #${idx + 1}</div>
+                            </div>
+                        `;
+                    }
                 });
 
-                const emptySlots = Math.max(0, maxDisplay - players.length);
-                for (let i = 0; i < Math.min(emptySlots, 4); i++) {
-                    html += `
-                        <div class="pitch-node pitch-node-empty" title="Slot ${role} disponibile">
-                            <div class="pitch-jersey">+</div>
-                            <div class="pitch-node-name">Slot</div>
-                        </div>
-                    `;
-                }
                 container.innerHTML = html;
             };
 
-            renderPitchLine('A', 'pitchRowA', 3);
-            renderPitchLine('C', 'pitchRowC', 4);
-            renderPitchLine('D', 'pitchRowD', 4);
-            renderPitchLine('P', 'pitchRowP', 1);
+            renderPitchRow('A', 'pitchRowA');
+            renderPitchRow('C', 'pitchRowC');
+            renderPitchRow('D', 'pitchRowD');
+            renderPitchRow('P', 'pitchRowP');
+        }
+
+        let currentPitchPicker = { role: null, slotIndex: null, currentAssigned: null, formation: null };
+
+        function openPitchPlayerPickerModal(role, slotIndex, currentAssigned, formation) {
+            currentPitchPicker = { role, slotIndex, currentAssigned, formation };
+            const team = (auctionState.teams || []).find(t => t.id === activeProfileId);
+            if (!team) return;
+
+            const roleNameMap = { P: 'Portiere', D: 'Difensore', C: 'Centrocampista', A: 'Attaccante' };
+            const titleEl = document.getElementById('pitchPickerTitle');
+            if (titleEl) titleEl.textContent = `Schiera Titolare: ${roleNameMap[role] || role} (Slot #${slotIndex + 1})`;
+
+            const subEl = document.getElementById('pitchPickerSubtitle');
+            if (subEl) subEl.textContent = `Modulo attivo: ${formation} — Scegli chi mandare in campo o scambiare`;
+
+            const removeBtn = document.getElementById('pitchPickerRemoveBtn');
+            if (removeBtn) {
+                removeBtn.style.display = currentAssigned ? 'inline-block' : 'none';
+            }
+
+            const listEl = document.getElementById('pitchPickerList');
+            if (!listEl) return;
+
+            const roster = team.roster || [];
+            const rolePlayers = roster.filter(p => p.role === role);
+
+            if (rolePlayers.length === 0) {
+                listEl.innerHTML = `
+                    <div style="text-align:center; padding:24px 12px; color:var(--text-muted); background:rgba(0,0,0,0.25); border-radius:8px;">
+                        <div style="font-size:1.8rem; margin-bottom:8px;">🧤</div>
+                        <div style="font-weight:700; color:var(--text-main);">Nessun ${roleNameMap[role] || role} in rosa</div>
+                        <div style="font-size:0.75rem; margin-top:4px;">Acquista calciatori per questo ruolo durante l'Asta o consultali nel Listone!</div>
+                    </div>
+                `;
+            } else {
+                // Find which players are currently assigned in this formation's slots
+                const { lineup } = resolvePitchLineup(team, formation);
+                const assignedMap = {};
+                (lineup[role] || []).forEach(s => {
+                    if (s.player) assignedMap[s.player.player] = s.slotIndex;
+                });
+
+                // Sort role players by FM/Score
+                const sortedPlayers = [...rolePlayers].sort((a, b) => {
+                    const aFm = parseFloat(a.mfv || a.mfv_hist || 6.0);
+                    const bFm = parseFloat(b.mfv || b.mfv_hist || 6.0);
+                    return bFm - aFm;
+                });
+
+                listEl.innerHTML = sortedPlayers.map(p => {
+                    const isCurrentSlot = p.player === currentAssigned;
+                    const assignedSlotIdx = assignedMap[p.player];
+                    const isAssignedOtherSlot = assignedSlotIdx !== undefined && assignedSlotIdx !== slotIndex;
+                    const pFm = p.mfv || p.mfv_hist || '6.0';
+                    const pMv = p.mv || p.mv_hist || '6.0';
+
+                    let statusBadge = '';
+                    let actionBtn = '';
+
+                    if (isCurrentSlot) {
+                        statusBadge = `<span style="background:rgba(16,185,129,0.2); color:#34d399; font-size:0.72rem; padding:2px 8px; border-radius:4px; font-weight:700;">In Campo Qui</span>`;
+                        actionBtn = `<button class="btn btn-danger" style="width:auto; padding:4px 10px; font-size:0.75rem;" onclick="removePlayerFromPitchSlot()">Rimuovi</button>`;
+                    } else if (isAssignedOtherSlot) {
+                        statusBadge = `<span style="background:rgba(56,189,248,0.15); color:#38bdf8; font-size:0.72rem; padding:2px 8px; border-radius:4px; font-weight:700;">Titolare (Slot #${assignedSlotIdx + 1})</span>`;
+                        actionBtn = `<button class="btn btn-secondary" style="width:auto; padding:4px 10px; font-size:0.75rem;" onclick="selectPlayerForPitchSlot('${p.player.replace(/'/g, "\\\\'")}')">Scambia</button>`;
+                    } else {
+                        statusBadge = `<span style="background:rgba(255,255,255,0.06); color:var(--text-muted); font-size:0.72rem; padding:2px 8px; border-radius:4px;">In Panchina</span>`;
+                        actionBtn = `<button class="btn btn-primary" style="width:auto; padding:4px 10px; font-size:0.75rem;" onclick="selectPlayerForPitchSlot('${p.player.replace(/'/g, "\\\\'")}')">Schiera</button>`;
+                    }
+
+                    return `
+                        <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:#0b111e; border:1px solid ${isCurrentSlot ? '#10b981' : 'var(--border)'}; border-radius:8px; gap:8px;">
+                            <div style="flex:1;">
+                                <div style="display:flex; align-items:center; gap:6px;">
+                                    <span class="badge badge-${p.role}">${p.role}</span>
+                                    <b style="color:var(--text-main); font-size:0.9rem;">${p.player}</b>
+                                    <small style="color:var(--text-muted);">(${p.team})</small>
+                                    ${statusBadge}
+                                </div>
+                                <div style="font-size:0.72rem; color:var(--text-muted); margin-top:3px; display:flex; gap:8px;">
+                                    <span>FM: <b style="color:#34d399;">${pFm}</b></span>
+                                    <span>MV: <b style="color:#38bdf8;">${pMv}</b></span>
+                                    <span>Prezzo: <b style="color:var(--gold);">${p.price} cr</b></span>
+                                    <span>P50: <b>${p.pts_exp || 0} pt</b></span>
+                                </div>
+                            </div>
+                            <div>
+                                ${actionBtn}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            const modal = document.getElementById('pitchPlayerPickerModal');
+            if (modal) modal.classList.add('active');
+        }
+
+        function closePitchPickerModal() {
+            const modal = document.getElementById('pitchPlayerPickerModal');
+            if (modal) modal.classList.remove('active');
+        }
+
+        function selectPlayerForPitchSlot(playerName) {
+            const { role, slotIndex, formation } = currentPitchPicker;
+            if (!role || slotIndex === null || !formation) return;
+
+            const targetSlotKey = `${role}_${slotIndex}`;
+            const allLineups = getPitchLineup();
+            if (!allLineups[formation]) allLineups[formation] = {};
+
+            // If player was assigned to another slot in this formation, swap or clear that slot
+            Object.keys(allLineups[formation]).forEach(k => {
+                if (allLineups[formation][k] === playerName) {
+                    delete allLineups[formation][k];
+                }
+            });
+
+            allLineups[formation][targetSlotKey] = playerName;
+            setPitchLineup(allLineups);
+
+            closePitchPickerModal();
+            renderRose();
+        }
+
+        function removePlayerFromPitchSlot() {
+            const { role, slotIndex, formation } = currentPitchPicker;
+            if (!role || slotIndex === null || !formation) return;
+
+            const targetSlotKey = `${role}_${slotIndex}`;
+            const allLineups = getPitchLineup();
+            if (allLineups[formation]) {
+                allLineups[formation][targetSlotKey] = '__EMPTY__';
+                setPitchLineup(allLineups);
+            }
+
+            closePitchPickerModal();
+            renderRose();
         }
 
         function renderRoleSlots(team, role, totalSlots, containerId) {
@@ -6174,6 +6534,10 @@ HTML_TEMPLATE = """
                     const aScore = (parseFloat(a.score) || 0) * 12 + (parseFloat(a.vorp) || 0) * 2 + (a.is_starter_2627 ? 15 : 0) + (parseFloat(a.pts_exp) || 0) * 0.1;
                     const bScore = (parseFloat(b.score) || 0) * 12 + (parseFloat(b.vorp) || 0) * 2 + (b.is_starter_2627 ? 15 : 0) + (parseFloat(b.pts_exp) || 0) * 0.1;
                     return bScore - aScore;
+                } else if (sortBy === 'mv_desc') {
+                    return (parseFloat(b.mv) || 0) - (parseFloat(a.mv) || 0);
+                } else if (sortBy === 'mfv_desc') {
+                    return (parseFloat(b.mfv) || 0) - (parseFloat(a.mfv) || 0);
                 } else if (sortBy === 'fair_desc') {
                     const aFair = a.price_fair_live || a.price_fair_scaled || a.price_fair_1000;
                     const bFair = b.price_fair_live || b.price_fair_scaled || b.price_fair_1000;
@@ -6233,12 +6597,12 @@ HTML_TEMPLATE = """
                                 ${isTarget ? `<span class="tier-badge tier-${targetInfo.priority}">T${targetInfo.priority} (Max ${targetInfo.max_price}cr)</span>` : ''}
                                 ${isAssigned ? `<span style="color:var(--danger); font-size:0.75rem; font-weight:700; margin-left:4px;">ASSEGNATO (${assignmentInfo.team_name || ''} - ${assignmentInfo.price || ''} cr)</span>` : ''}
                             </div>
-                            <div class="player-meta">
-                                <span>Punti Attesi: <b>${p.pts_exp}</b></span>
-                                <span style="color:var(--border);">|</span>
-                                <span class="scout-vorp-badge">VORP +${p.vorp}</span>
-                                <span style="color:var(--border);">|</span>
-                                <span>Range: ${p.pts_floor} - ${p.pts_ceil}</span>
+                            <div class="player-meta" style="display:flex; align-items:center; flex-wrap:wrap; gap:6px 10px; margin-top:4px;">
+                                <span style="background:rgba(56,189,248,0.12); color:#38bdf8; padding:2px 7px; border-radius:5px; font-size:0.78rem; font-weight:700;">MV: <b>${p.mv || '6.0'}</b></span>
+                                <span style="background:rgba(16,185,129,0.12); color:#34d399; padding:2px 7px; border-radius:5px; font-size:0.78rem; font-weight:700;">FM: <b>${p.mfv || '6.0'}</b></span>
+                                <span style="color:var(--text-main); font-size:0.78rem; font-weight:600;"><span style="color:var(--gold); font-weight:700;">Bonus:</span> ${p.bonus_range || 'N/D'}</span>
+                                <span class="scout-vorp-badge" style="font-size:0.75rem;">VORP +${p.vorp}</span>
+                                <small style="color:var(--text-muted); font-size:0.72rem; margin-left:auto;">P50: <b>${p.pts_exp} pt</b> (~${p.expected_matches || 28}p)</small>
                             </div>
                         </div>
                         <div class="player-stats">
