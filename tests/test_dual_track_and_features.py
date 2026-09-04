@@ -242,6 +242,17 @@ def main():
     test("HTML contiene helper 'isReserveSlot'", "isReserveSlot" in html)
     test("HTML contiene supporto '🛡️ Blocco'", "🛡️ Blocco" in html)
 
+    # ── 15. Outfield Slot Tactic Fasce (Slot 1 = Top F1) ─────────────
+    print("\n▸ 15. Configurazione Tattica Reparti Fuori Porta (D, C, A)")
+    for preset_name, preset_cfg in presets.items():
+        slots = preset_cfg.get("slots", {})
+        for role in ["D", "C", "A"]:
+            r_slots = slots.get(role, [])
+            test(f"Preset '{preset_name}' {role} slot 1 è Fascia 1 (Top)", len(r_slots) > 0 and r_slots[0]["fascia"] == 1)
+
+    test("HTML esclude giocatori già assegnati ad altri slot target", "slots[k] === p.player" in html)
+    test("HTML renderStrategyTab esclude giocatori già targettati", "targetSlots[k] === p.player" in html)
+
     # ── SUMMARY ───────────────────────────────────────────────────────
     print("\n" + "=" * 72)
     passed = sum(1 for _, s, _ in results if s == PASS)

@@ -191,23 +191,23 @@ TACTICAL_PRESETS = {
                 {"slot": 7, "name": "7° Slot: Chiusura Reparto", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
             ],
             "C": [
-                {"slot": 1, "name": "1° Slot: Centrocampista Semi-Top", "target_budget": "60-90 cr", "max_limit": 100, "fascia": 2},
+                {"slot": 1, "name": "1° Slot: Centrocampista Top / Semi-Top", "target_budget": "60-90 cr", "max_limit": 100, "fascia": 1},
                 {"slot": 2, "name": "2° Slot: Titolare Affidabile", "target_budget": "35-55 cr", "max_limit": 60, "fascia": 2},
-                {"slot": 3, "name": "3° Slot: Regolarista", "target_budget": "20-35 cr", "max_limit": 40, "fascia": 3},
+                {"slot": 3, "name": "3° Slot: Regolarista", "target_budget": "20-35 cr", "max_limit": 40, "fascia": 2},
                 {"slot": 4, "name": "4° Slot: Titolare Low-Cost", "target_budget": "10-20 cr", "max_limit": 25, "fascia": 3},
                 {"slot": 5, "name": "5° Slot: Titolare Squadra Media", "target_budget": "5-12 cr", "max_limit": 15, "fascia": 3},
-                {"slot": 6, "name": "6° Slot: Copertura", "target_budget": "2-6 cr", "max_limit": 8, "fascia": 4},
+                {"slot": 6, "name": "6° Slot: Copertura", "target_budget": "2-6 cr", "max_limit": 8, "fascia": 3},
                 {"slot": 7, "name": "7° Slot: Scommessa", "target_budget": "1-3 cr", "max_limit": 4, "fascia": 4},
                 {"slot": 8, "name": "8° Slot: Riserva", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
                 {"slot": 9, "name": "9° Slot: Chiusura", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
             ],
             "D": [
-                {"slot": 1, "name": "1° Slot: Titolare Prima Fascia Difesa", "target_budget": "25-40 cr", "max_limit": 45, "fascia": 2},
+                {"slot": 1, "name": "1° Slot: Top Difensore Modificatore", "target_budget": "25-40 cr", "max_limit": 45, "fascia": 1},
                 {"slot": 2, "name": "2° Slot: Titolare Sicuro", "target_budget": "15-25 cr", "max_limit": 30, "fascia": 2},
-                {"slot": 3, "name": "3° Slot: Titolare Squadra Media", "target_budget": "10-18 cr", "max_limit": 20, "fascia": 3},
+                {"slot": 3, "name": "3° Slot: Titolare Squadra Media", "target_budget": "10-18 cr", "max_limit": 20, "fascia": 2},
                 {"slot": 4, "name": "4° Slot: Regolarista", "target_budget": "5-12 cr", "max_limit": 15, "fascia": 3},
                 {"slot": 5, "name": "5° Slot: Terzino Low Cost", "target_budget": "3-8 cr", "max_limit": 10, "fascia": 3},
-                {"slot": 6, "name": "6° Slot: Titolare Provincia", "target_budget": "1-5 cr", "max_limit": 6, "fascia": 4},
+                {"slot": 6, "name": "6° Slot: Titolare Provincia", "target_budget": "1-5 cr", "max_limit": 6, "fascia": 3},
                 {"slot": 7, "name": "7° Slot: Copertura", "target_budget": "1 cr", "max_limit": 3, "fascia": 4},
                 {"slot": 8, "name": "8° Slot: Riserva", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
                 {"slot": 9, "name": "9° Slot: Chiusura", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
@@ -240,7 +240,7 @@ TACTICAL_PRESETS = {
                 {"slot": 9, "name": "9° Slot: Chiusura Reparto", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
             ],
             "A": [
-                {"slot": 1, "name": "1° Slot: Attaccante Semi-Top Primario", "target_budget": "180-230 cr", "max_limit": 250, "fascia": 2},
+                {"slot": 1, "name": "1° Slot: Attaccante Top / Semi-Top Primario", "target_budget": "180-230 cr", "max_limit": 250, "fascia": 1},
                 {"slot": 2, "name": "2° Slot: Secondo Attaccante da Bonus", "target_budget": "110-140 cr", "max_limit": 150, "fascia": 2},
                 {"slot": 3, "name": "3° Slot: Terzo Attaccante Titolare", "target_budget": "60-85 cr", "max_limit": 95, "fascia": 2},
                 {"slot": 4, "name": "4° Slot: Co-Titolare / Opportunità", "target_budget": "20-40 cr", "max_limit": 45, "fascia": 3},
@@ -249,7 +249,7 @@ TACTICAL_PRESETS = {
                 {"slot": 7, "name": "7° Slot: Chiusura Reparto", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
             ],
             "C": [
-                {"slot": 1, "name": "1° Slot: Centrocampista Semi-Top", "target_budget": "70-100 cr", "max_limit": 110, "fascia": 2},
+                {"slot": 1, "name": "1° Slot: Centrocampista Top / Semi-Top", "target_budget": "70-100 cr", "max_limit": 110, "fascia": 1},
                 {"slot": 2, "name": "2° Slot: Titolare da Bonus", "target_budget": "40-60 cr", "max_limit": 70, "fascia": 2},
                 {"slot": 3, "name": "3° Slot: Regolarista Affidabile", "target_budget": "25-40 cr", "max_limit": 45, "fascia": 2},
                 {"slot": 4, "name": "4° Slot: Titolare Squadra Media", "target_budget": "15-25 cr", "max_limit": 30, "fascia": 3},
@@ -287,7 +287,7 @@ TACTICAL_PRESETS = {
                 {"slot": 9, "name": "9° Slot: Chiusura", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
             ],
             "A": [
-                {"slot": 1, "name": "1° Slot: Primo Attaccante Titolare", "target_budget": "190-230 cr", "max_limit": 250, "fascia": 2},
+                {"slot": 1, "name": "1° Slot: Top / Primo Attaccante Titolare", "target_budget": "190-230 cr", "max_limit": 250, "fascia": 1},
                 {"slot": 2, "name": "2° Slot: Secondo Attaccante Titolare", "target_budget": "110-140 cr", "max_limit": 150, "fascia": 2},
                 {"slot": 3, "name": "3° Slot: Terzo Attaccante Titolare", "target_budget": "55-80 cr", "max_limit": 90, "fascia": 2},
                 {"slot": 4, "name": "4° Slot: Quarto Slot / Rotazione", "target_budget": "15-30 cr", "max_limit": 35, "fascia": 3},
@@ -296,12 +296,12 @@ TACTICAL_PRESETS = {
                 {"slot": 7, "name": "7° Slot: Chiusura Reparto", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
             ],
             "D": [
-                {"slot": 1, "name": "1° Slot: Difensore Primario", "target_budget": "30-50 cr", "max_limit": 55, "fascia": 2},
+                {"slot": 1, "name": "1° Slot: Top Difensore Primario", "target_budget": "30-50 cr", "max_limit": 55, "fascia": 1},
                 {"slot": 2, "name": "2° Slot: Titolare Sicuro", "target_budget": "20-30 cr", "max_limit": 35, "fascia": 2},
-                {"slot": 3, "name": "3° Slot: Titolare Squadra Media", "target_budget": "12-20 cr", "max_limit": 25, "fascia": 3},
+                {"slot": 3, "name": "3° Slot: Titolare Squadra Media", "target_budget": "12-20 cr", "max_limit": 25, "fascia": 2},
                 {"slot": 4, "name": "4° Slot: Regolarista", "target_budget": "8-15 cr", "max_limit": 18, "fascia": 3},
                 {"slot": 5, "name": "5° Slot: Terzino Low Cost", "target_budget": "4-10 cr", "max_limit": 12, "fascia": 3},
-                {"slot": 6, "name": "6° Slot: Titolare Provincia", "target_budget": "2-5 cr", "max_limit": 6, "fascia": 4},
+                {"slot": 6, "name": "6° Slot: Titolare Provincia", "target_budget": "2-5 cr", "max_limit": 6, "fascia": 3},
                 {"slot": 7, "name": "7° Slot: Copertura", "target_budget": "1 cr", "max_limit": 3, "fascia": 4},
                 {"slot": 8, "name": "8° Slot: Riserva", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
                 {"slot": 9, "name": "9° Slot: Chiusura", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
@@ -323,7 +323,7 @@ TACTICAL_PRESETS = {
         "split": {"P": "100 cr (10%)", "D": "160 cr (16%)", "C": "260 cr (26%)", "A": "480 cr (48%)"},
         "slots": {
             "A": [
-                {"slot": 1, "name": "1° Slot: Attaccante 1° Livello Value", "target_budget": "150-195 cr", "max_limit": 205, "fascia": 2},
+                {"slot": 1, "name": "1° Slot: Top Attaccante Value", "target_budget": "150-195 cr", "max_limit": 205, "fascia": 1},
                 {"slot": 2, "name": "2° Slot: Secondo Attaccante Titolare", "target_budget": "120-155 cr", "max_limit": 165, "fascia": 2},
                 {"slot": 3, "name": "3° Slot: Terzo Attaccante Titolare", "target_budget": "90-120 cr", "max_limit": 130, "fascia": 2},
                 {"slot": 4, "name": "4° Slot: Quarto Attaccante / Titolare", "target_budget": "40-60 cr", "max_limit": 70, "fascia": 3},
@@ -332,7 +332,7 @@ TACTICAL_PRESETS = {
                 {"slot": 7, "name": "7° Slot: Chiusura Reparto", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
             ],
             "C": [
-                {"slot": 1, "name": "1° Slot: Centrocampista Leader", "target_budget": "80-110 cr", "max_limit": 120, "fascia": 2},
+                {"slot": 1, "name": "1° Slot: Top Centrocampista Leader", "target_budget": "80-110 cr", "max_limit": 120, "fascia": 1},
                 {"slot": 2, "name": "2° Slot: Titolare Bonus", "target_budget": "60-85 cr", "max_limit": 95, "fascia": 2},
                 {"slot": 3, "name": "3° Slot: Titolare Continuo", "target_budget": "40-60 cr", "max_limit": 70, "fascia": 2},
                 {"slot": 4, "name": "4° Slot: Regolarista", "target_budget": "20-35 cr", "max_limit": 40, "fascia": 3},
@@ -343,7 +343,7 @@ TACTICAL_PRESETS = {
                 {"slot": 9, "name": "9° Slot: Chiusura", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
             ],
             "D": [
-                {"slot": 1, "name": "1° Slot: Difensore Top Modificatore", "target_budget": "40-60 cr", "max_limit": 65, "fascia": 2},
+                {"slot": 1, "name": "1° Slot: Top Difensore Modificatore", "target_budget": "40-60 cr", "max_limit": 65, "fascia": 1},
                 {"slot": 2, "name": "2° Slot: Titolare Alta MV", "target_budget": "25-40 cr", "max_limit": 45, "fascia": 2},
                 {"slot": 3, "name": "3° Slot: Titolare Sicuro", "target_budget": "20-30 cr", "max_limit": 35, "fascia": 2},
                 {"slot": 4, "name": "4° Slot: Difensore Primaria Squadra", "target_budget": "12-20 cr", "max_limit": 25, "fascia": 3},
@@ -5078,8 +5078,8 @@ HTML_TEMPLATE = """
                 if (slotIdx === 2) return { slot: 3, name: "3° Portiere: Terzo Portiere", fascia: 4, target_budget: "1 cr", max_limit: 3 };
                 return { slot: slotIdx + 1, name: `${slotIdx + 1}° Portiere: Quarto Portiere`, fascia: 4, target_budget: "1 cr", max_limit: 2 };
             }
-            if (slotIdx < 2) return { slot: slotIdx + 1, name: `${slotIdx + 1}° Slot: Top`, fascia: 1 };
-            if (slotIdx < 4) return { slot: slotIdx + 1, name: `${slotIdx + 1}° Slot: Semitop`, fascia: 2 };
+            if (slotIdx === 0) return { slot: 1, name: "1° Slot: Top", fascia: 1 };
+            if (slotIdx < 3) return { slot: slotIdx + 1, name: `${slotIdx + 1}° Slot: Semitop`, fascia: 2 };
             if (slotIdx < 6) return { slot: slotIdx + 1, name: `${slotIdx + 1}° Slot: Low-Cost`, fascia: 3 };
             return { slot: slotIdx + 1, name: `${slotIdx + 1}° Slot: Scommessa / Chiusura`, fascia: 4 };
         }
@@ -5128,21 +5128,21 @@ HTML_TEMPLATE = """
 
                 if (role === 'P') {
                     if (slotIdx === 0) {
-                        targetCandidateFascia = slotCfg.fascia || 1;
+                        targetCandidateFascia = parseInt(slotCfg.fascia, 10) || 1;
                     } else if (isReserveSlot(slotCfg)) {
                         targetCandidateFascia = 4;
                     } else {
-                        targetCandidateFascia = slotCfg.fascia || 2;
+                        targetCandidateFascia = parseInt(slotCfg.fascia, 10) || 2;
                     }
                 } else {
-                    targetCandidateFascia = slotCfg.fascia || 1;
+                    targetCandidateFascia = parseInt(slotCfg.fascia, 10) || (slotIdx === 0 ? 1 : (slotIdx < 3 ? 2 : (slotIdx < 6 ? 3 : 4)));
                 }
             }
             renderTargetsTab();
         }
 
         function setTargetCandidateFascia(f) {
-            targetCandidateFascia = f;
+            targetCandidateFascia = (f === 'BLOCCO') ? 'BLOCCO' : parseInt(f, 10);
             renderTargetsTab();
         }
 
@@ -5224,14 +5224,23 @@ HTML_TEMPLATE = """
             const candidates = allPlayers.filter(p => {
                 if (p.role !== role) return false;
 
+                // Exclude players already assigned to any OTHER slot in the target planner
+                for (const k in slots) {
+                    if (k !== `${role}_${slotIdx}` && slots[k] === p.player) {
+                        return false;
+                    }
+                }
+
                 if (role === 'P' && targetCandidateFascia === 'BLOCCO') {
                     if (!p1Team || p.team !== p1Team) return false;
                     if (p.player === p1Name) return false;
-                } else if (targetCandidateFascia === 4) {
+                } else if (role === 'P' && targetCandidateFascia === 4) {
+                    // For goalkeepers, F4 includes nominal F4 or non-starter reserves
                     if (p.fascia !== 4 && (p.is_starter_2627 === 1 || p.is_starter_2627 === true || p.is_starter_2627 === "1")) {
                         return false;
                     }
                 } else if (targetCandidateFascia > 0) {
+                    // Strict fascia matching for all outfield roles (D, C, A) and P fasce 1-3
                     if (p.fascia !== targetCandidateFascia) return false;
                 }
 
@@ -5251,6 +5260,11 @@ HTML_TEMPLATE = """
                     if (bIsBlock !== aIsBlock) return bIsBlock - aIsBlock;
                 }
 
+                // Available / unassigned players come before players assigned to other auction teams
+                const aAssignedOther = (assignedMap[a.player] && assignedMap[a.player].team_id !== activeProfileId) ? 1 : 0;
+                const bAssignedOther = (assignedMap[b.player] && assignedMap[b.player].team_id !== activeProfileId) ? 1 : 0;
+                if (aAssignedOther !== bAssignedOther) return aAssignedOther - bAssignedOther;
+
                 const fairA = a.price_fair_live || a.price_fair_scaled || a.price_fair_1000 || 1;
                 const fairB = b.price_fair_live || b.price_fair_scaled || b.price_fair_1000 || 1;
                 if (fairB !== fairA) return fairB - fairA;
@@ -5261,7 +5275,7 @@ HTML_TEMPLATE = """
                 return '<div style="text-align:center; padding:12px; color:var(--text-muted); font-size:0.8rem;">Nessun calciatore trovato con i criteri attuali.</div>';
             }
 
-            return candidates.slice(0, 35).map(p => {
+            return candidates.slice(0, 40).map(p => {
                 const fair = p.price_fair_live || p.price_fair_scaled || p.price_fair_1000 || 1;
                 const isAssigned = (p.player in assignedMap) || p.is_assigned;
                 const isSlotSelected = slots[`${role}_${slotIdx}`] === p.player;
@@ -5497,7 +5511,7 @@ HTML_TEMPLATE = """
                                                 ${pillsHtml}
                                             </div>
                                         </div>
-                                        <input type="text" class="search-input" style="padding:6px 10px; font-size:0.82rem; margin-bottom:8px;" placeholder="Cerca calciatore per nome o squadra..." oninput="filterTargetCandidates('${slotKey}', this.value)">
+                                        <input type="text" class="search-input" style="padding:6px 10px; font-size:0.82rem; margin-bottom:8px;" placeholder="Cerca calciatore per nome o squadra..." value="${targetCandidateSearch}" oninput="filterTargetCandidates('${slotKey}', this.value)">
                                         <div id="candidates-list-${slotKey}" style="max-height:260px; overflow-y:auto;">
                                             ${renderCandidateItemsHtml(role, i)}
                                         </div>
@@ -5526,7 +5540,7 @@ HTML_TEMPLATE = """
                                                 ${pillsHtml}
                                             </div>
                                         </div>
-                                        <input type="text" class="search-input" style="padding:6px 10px; font-size:0.82rem; margin-bottom:8px;" placeholder="Cerca calciatore per nome o squadra..." oninput="filterTargetCandidates('${slotKey}', this.value)">
+                                        <input type="text" class="search-input" style="padding:6px 10px; font-size:0.82rem; margin-bottom:8px;" placeholder="Cerca calciatore per nome o squadra..." value="${targetCandidateSearch}" oninput="filterTargetCandidates('${slotKey}', this.value)">
                                         <div id="candidates-list-${slotKey}" style="max-height:260px; overflow-y:auto;">
                                             ${renderCandidateItemsHtml(role, i)}
                                         </div>
@@ -5784,6 +5798,7 @@ HTML_TEMPLATE = """
             const scaleRatio = activeBudget / 1000.0;
             const container = document.getElementById('strategySlotsContainer');
 
+            const targetSlots = loadTargetSlots();
             let html = '';
             roleSlots.forEach((slotCfg, idx) => {
                 const isAcquired = idx < myCount;
@@ -5799,6 +5814,16 @@ HTML_TEMPLATE = """
 
                 // Candidate ranking tailored by role & tactical blueprint with dynamic scaled prices
                 const candidates = availableRole.filter(p => {
+                    // Exclude players already acquired in user's roster
+                    if (myRosterRole.some(r => r.player === p.player)) return false;
+
+                    // Exclude players already planned in OTHER target slots
+                    for (const k in targetSlots) {
+                        if (k !== `${role}_${idx}` && targetSlots[k] === p.player) {
+                            return false;
+                        }
+                    }
+
                     const fair = p.price_fair_live || p.price_fair_scaled || p.price_fair_1000;
                     if (role === 'P') {
                         if (slotCfg.fascia === 1) {
