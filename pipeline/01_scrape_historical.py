@@ -72,9 +72,20 @@ def scrape_fantacalcio_season(season):
         link_tag = row.select_one("a.player-link")
         if not link_tag:
             continue
-        href = link_tag.get("href", "")
-        pid_match = re.search(r"/(\d+)$", href)
-        player_id = int(pid_match.group(1)) if pid_match else None
+        player_id = None
+        # Try direct attributes
+        for attr in ["data-id", "data-player-id"]:
+            val = row.get(attr) or (link_tag.get(attr) if link_tag else None)
+            if val and str(val).isdigit():
+                player_id = int(val)
+                break
+
+        # Fallback to link href parsing
+        if player_id is None and link_tag:
+            href = link_tag.get("href", "")
+            pid_match = re.search(r"[-/](\d+)(?:[/?#]|$)", href)
+            if pid_match:
+                player_id = int(pid_match.group(1))
 
         name        = row.get("data-filter-keywords", "").strip()
         role        = row.get("data-filter-role-classic", "").strip()

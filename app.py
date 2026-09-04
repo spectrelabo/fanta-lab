@@ -21,9 +21,43 @@ if not os.path.exists(DATA_PATH):
 if not os.path.exists(DATA_PATH):
     DATA_PATH = os.path.join(BASE_DIR, "examples", "dataset_sample.csv")
 
-# Support writable temp path for Vercel / serverless environments
-STATE_PATH = "/tmp/auction_state.json" if os.environ.get("VERCEL") else os.path.join(BASE_DIR, "auction_state.json")
-SETTINGS_PATH = "/tmp/league_settings.json" if os.environ.get("VERCEL") else os.path.join(BASE_DIR, "league_settings.json")
+# ──────────────────────────────────────────────────────────────────────
+# DUAL-TRACK ARCHITECTURE & SERVERLESS RESILIENCE
+# APP_ENV: 'personal' (private production) vs 'community' (public open-source)
+# ──────────────────────────────────────────────────────────────────────
+APP_ENV = os.environ.get("APP_ENV", "community").strip().lower()
+
+def _get_writable_path(filename, default_dir=BASE_DIR):
+    """Provides serverless-safe writable file path with /tmp fallback."""
+    target = os.path.join(default_dir, filename)
+    if os.environ.get("VERCEL") == "1" or not os.access(default_dir, os.W_OK):
+        tmp_target = os.path.join("/tmp", filename)
+        if not os.path.exists(tmp_target) and os.path.exists(target):
+            try:
+                import shutil
+                shutil.copyfile(target, tmp_target)
+            except Exception:
+                pass
+        return tmp_target
+    return target
+
+STATE_PATH = _get_writable_path("auction_state.json")
+SETTINGS_PATH = _get_writable_path("league_settings.json")
+
+_IN_MEMORY_STATE = None
+_IN_MEMORY_SETTINGS = None
+
+# Load Transfermarkt injuries cache for Clinical Audit Window
+_INJURIES_CACHE = {}
+_inj_path = os.path.join(BASE_DIR, "data", "tm_injuries_cache.json")
+if not os.path.exists(_inj_path):
+    _inj_path = os.path.join(BASE_DIR, "tm_injuries_cache.json")
+if os.path.exists(_inj_path):
+    try:
+        with open(_inj_path, "r", encoding="utf-8") as f:
+            _INJURIES_CACHE = json.load(f)
+    except Exception:
+        pass
 
 # Load local .env if present
 ENV_PATH = os.path.join(BASE_DIR, ".env")
@@ -40,96 +74,88 @@ if os.path.exists(ENV_PATH):
 
 # ──────────────────────────────────────────────────────────────────────
 # CASCADING CONFIGURATION LOADER
-# Priority: config.personal.py > config_defaults.py > hardcoded fallback
+# Open-Source defaults: 500 cr, 3-8-8-6, Squadra 1..10
 # ──────────────────────────────────────────────────────────────────────
 
-# Hardcoded fallback (always safe)
 DEFAULT_BUDGET = 500
 DEFAULT_ROSTER_SLOTS = {"P": 3, "D": 8, "C": 8, "A": 6}
 DEFAULT_TEAMS = [{"id": i, "name": f"Squadra {i}", "is_me": i == 1} for i in range(1, 11)]
 ADMIN_PASSWORD = "fanta2026"
 
-# Layer 1: Load community defaults
-try:
-    import config_defaults
-    DEFAULT_BUDGET = getattr(config_defaults, "DEFAULT_BUDGET", DEFAULT_BUDGET)
-    DEFAULT_ROSTER_SLOTS = getattr(config_defaults, "DEFAULT_ROSTER_SLOTS", DEFAULT_ROSTER_SLOTS)
-    DEFAULT_TEAMS = getattr(config_defaults, "DEFAULT_TEAMS", DEFAULT_TEAMS)
-    ADMIN_PASSWORD = getattr(config_defaults, "ADMIN_PASSWORD", ADMIN_PASSWORD)
-except ImportError:
-    pass
-
-# Layer 2: Personal Profile Support
-# 2a. Environment-based override (via PERSONAL_TEAMS_JSON or PERSONAL_TEAMS env var on private Vercel)
-_env_teams_json = os.environ.get("PERSONAL_TEAMS_JSON")
-if _env_teams_json:
-    try:
-        import json
-        DEFAULT_TEAMS = json.loads(_env_teams_json)
-    except Exception:
-        pass
-elif os.environ.get("PERSONAL_TEAMS"):
-    # Comma-separated list of names: "Io,Squadra2,Squadra3,..."
-    names = [n.strip() for n in os.environ.get("PERSONAL_TEAMS").split(",") if n.strip()]
-    if names:
-        DEFAULT_TEAMS = [{"id": i+1, "name": name, "is_me": i == 0} for i, name in enumerate(names)]
-
-# 2b. File-based override (if config.personal.py is present locally, gitignored)
 _personal_config_path = os.path.join(BASE_DIR, "config.personal.py")
-if os.path.exists(_personal_config_path):
-    try:
-        import importlib.util
-        _spec = importlib.util.spec_from_file_location("config_personal", _personal_config_path)
-        _personal = importlib.util.module_from_spec(_spec)
-        _spec.loader.exec_module(_personal)
-        DEFAULT_BUDGET = getattr(_personal, "DEFAULT_BUDGET", DEFAULT_BUDGET)
-        DEFAULT_ROSTER_SLOTS = getattr(_personal, "DEFAULT_ROSTER_SLOTS", DEFAULT_ROSTER_SLOTS)
-        DEFAULT_TEAMS = getattr(_personal, "DEFAULT_TEAMS", DEFAULT_TEAMS)
-        ADMIN_PASSWORD = getattr(_personal, "ADMIN_PASSWORD", ADMIN_PASSWORD)
-    except Exception:
-        pass
+IS_PERSONAL = (APP_ENV == "personal") or (os.path.exists(_personal_config_path) and APP_ENV != "community")
 
-# Environment variable override for admin password
+if IS_PERSONAL:
+    # Load personal configuration (file-based or environment variables)
+    if os.path.exists(_personal_config_path):
+        try:
+            import importlib.util
+            _spec = importlib.util.spec_from_file_location("config_personal", _personal_config_path)
+            _personal = importlib.util.module_from_spec(_spec)
+            _spec.loader.exec_module(_personal)
+            DEFAULT_BUDGET = getattr(_personal, "DEFAULT_BUDGET", DEFAULT_BUDGET)
+            DEFAULT_ROSTER_SLOTS = getattr(_personal, "DEFAULT_ROSTER_SLOTS", DEFAULT_ROSTER_SLOTS)
+            DEFAULT_TEAMS = getattr(_personal, "DEFAULT_TEAMS", DEFAULT_TEAMS)
+            ADMIN_PASSWORD = getattr(_personal, "ADMIN_PASSWORD", ADMIN_PASSWORD)
+        except Exception:
+            pass
+
+    if os.environ.get("PERSONAL_BUDGET"):
+        try: DEFAULT_BUDGET = int(os.environ.get("PERSONAL_BUDGET"))
+        except Exception: pass
+    if os.environ.get("PERSONAL_SLOTS_JSON"):
+        try: DEFAULT_ROSTER_SLOTS = json.loads(os.environ.get("PERSONAL_SLOTS_JSON"))
+        except Exception: pass
+    if os.environ.get("PERSONAL_TEAMS_JSON"):
+        try: DEFAULT_TEAMS = json.loads(os.environ.get("PERSONAL_TEAMS_JSON"))
+        except Exception: pass
+    elif os.environ.get("PERSONAL_TEAMS"):
+        names = [n.strip() for n in os.environ.get("PERSONAL_TEAMS").split(",") if n.strip()]
+        if names:
+            DEFAULT_TEAMS = [{"id": i+1, "name": name, "is_me": i == 0} for i, name in enumerate(names)]
+
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", ADMIN_PASSWORD)
-
 TOTAL_ROSTER_SIZE = sum(DEFAULT_ROSTER_SLOTS.values())
 
 # ──────────────────────────────────────────────────────────────────────
 # BOT IDENTITY & PERSONA
 # ──────────────────────────────────────────────────────────────────────
-BOT_NAME = os.environ.get("BOT_NAME", "FantaMoneyball AI")
-BOT_SUBTITLE = os.environ.get("BOT_SUBTITLE", "Assistente Tattico Quantitativo")
-BOT_AVATAR_TEXT = os.environ.get("BOT_AVATAR_TEXT", "AI")
-BOT_BADGE = os.environ.get("BOT_BADGE", "PRO DECISION")
-BOT_GREETING = os.environ.get(
-    "BOT_GREETING",
+BOT_NAME = "FantaMoneyball AI"
+BOT_SUBTITLE = "Assistente Tattico Quantitativo"
+BOT_AVATAR_TEXT = "AI"
+BOT_BADGE = "PRO DECISION"
+BOT_GREETING = (
     "Ciao! Sono l'assistente quantitativo di **Spectre - FantaMoneyball**. Chiedimi confronti (es. *Malen vs Lautaro*), "
     "analisi di reparto o raccomandazioni basate su VORP e proiezioni ML."
 )
-BOT_AVATAR_IMAGE = os.environ.get("BOT_AVATAR_URL", "")
+BOT_AVATAR_IMAGE = ""
 
-# Load overrides from gitignored config.personal.py if present locally
-if os.path.exists(_personal_config_path):
-    try:
-        BOT_NAME = getattr(_personal, "BOT_NAME", BOT_NAME)
-        BOT_SUBTITLE = getattr(_personal, "BOT_SUBTITLE", BOT_SUBTITLE)
-        BOT_AVATAR_TEXT = getattr(_personal, "BOT_AVATAR_TEXT", BOT_AVATAR_TEXT)
-        BOT_BADGE = getattr(_personal, "BOT_BADGE", BOT_BADGE)
-        BOT_GREETING = getattr(_personal, "BOT_GREETING", BOT_GREETING)
-    except Exception:
-        pass
+if IS_PERSONAL:
+    if os.path.exists(_personal_config_path):
+        try:
+            BOT_NAME = getattr(_personal, "BOT_NAME", BOT_NAME)
+            BOT_SUBTITLE = getattr(_personal, "BOT_SUBTITLE", BOT_SUBTITLE)
+            BOT_AVATAR_TEXT = getattr(_personal, "BOT_AVATAR_TEXT", BOT_AVATAR_TEXT)
+            BOT_BADGE = getattr(_personal, "BOT_BADGE", BOT_BADGE)
+            BOT_GREETING = getattr(_personal, "BOT_GREETING", BOT_GREETING)
+        except Exception:
+            pass
 
-# Check local personal avatar if exists
-_local_avatar_path = os.path.join(BASE_DIR, "static", "personal_avatar.jpg")
-if os.path.exists(_local_avatar_path):
-    try:
-        import base64
-        with open(_local_avatar_path, "rb") as f:
-            BOT_AVATAR_IMAGE = "data:image/jpeg;base64," + base64.b64encode(f.read()).decode("utf-8")
-    except Exception:
-        pass
+    _local_avatar_path = os.path.join(BASE_DIR, "static", "personal_avatar.jpg")
+    if os.path.exists(_local_avatar_path):
+        try:
+            import base64
+            with open(_local_avatar_path, "rb") as f:
+                BOT_AVATAR_IMAGE = "data:image/jpeg;base64," + base64.b64encode(f.read()).decode("utf-8")
+        except Exception:
+            pass
 
-IS_PERSONAL = bool(BOT_AVATAR_IMAGE or os.path.exists(_personal_config_path) or os.environ.get("APP_ENV") == "personal")
+BOT_NAME = os.environ.get("BOT_NAME", BOT_NAME)
+BOT_SUBTITLE = os.environ.get("BOT_SUBTITLE", BOT_SUBTITLE)
+BOT_AVATAR_TEXT = os.environ.get("BOT_AVATAR_TEXT", BOT_AVATAR_TEXT)
+BOT_BADGE = os.environ.get("BOT_BADGE", BOT_BADGE)
+BOT_GREETING = os.environ.get("BOT_GREETING", BOT_GREETING)
+BOT_AVATAR_IMAGE = os.environ.get("BOT_AVATAR_URL", BOT_AVATAR_IMAGE)
 
 app = Flask(__name__)
 
@@ -152,6 +178,7 @@ TACTICAL_PRESETS = {
         "name": "Trazione Anteriore (Top Bomber)",
         "badge": "ATT 65%",
         "description": "Investi il 65% in attacco (360-450 cr per 1 Top Bomber primario come Malen o Lautaro). Difesa a basso costo e centrocampo di regolaristi.",
+        "split_pct": {"P": 0.07, "D": 0.09, "C": 0.19, "A": 0.65},
         "split": {"P": "70 cr (7%)", "D": "90 cr (9%)", "C": "190 cr (19%)", "A": "650 cr (65%)"},
         "slots": {
             "A": [
@@ -186,9 +213,9 @@ TACTICAL_PRESETS = {
                 {"slot": 9, "name": "9° Slot: Chiusura", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
             ],
             "P": [
-                {"slot": 1, "name": "1° Portiere: Titolare Fascia Media/Top", "target_budget": "60-80 cr", "max_limit": 85, "fascia": 1},
-                {"slot": 2, "name": "2° Portiere: Riserva Blocco", "target_budget": "1-5 cr", "max_limit": 8, "fascia": 2},
-                {"slot": 3, "name": "3° Portiere: Terzo Portiere", "target_budget": "1 cr", "max_limit": 2, "fascia": 3},
+                {"slot": 1, "name": "1° Portiere: Titolare (Top o Fascia Media)", "target_budget": "35-80 cr", "max_limit": 85, "fascia": 1},
+                {"slot": 2, "name": "2° Portiere: Alternanza o Riserva Blocco", "target_budget": "1-25 cr", "max_limit": 30, "fascia": 2},
+                {"slot": 3, "name": "3° Portiere: Terzo Portiere / Copertura", "target_budget": "1-3 cr", "max_limit": 5, "fascia": 3},
                 {"slot": 4, "name": "4° Portiere: Quarto Portiere", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
             ]
         }
@@ -198,6 +225,7 @@ TACTICAL_PRESETS = {
         "name": "Modificatore di Ferro (Difesa Top)",
         "badge": "DIF 22% / POR 13%",
         "description": "Massimizza il bonus modificatore con Portiere Top e 3 difensori da alta MV (Dimarco, Bastoni). Attacco solido a 3 punte senza svenarsi.",
+        "split_pct": {"P": 0.13, "D": 0.22, "C": 0.21, "A": 0.44},
         "split": {"P": "130 cr (13%)", "D": "220 cr (22%)", "C": "210 cr (21%)", "A": "440 cr (44%)"},
         "slots": {
             "D": [
@@ -232,9 +260,9 @@ TACTICAL_PRESETS = {
                 {"slot": 9, "name": "9° Slot: Chiusura", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
             ],
             "P": [
-                {"slot": 1, "name": "1° Portiere: Top Portiere Squadra Scudetto", "target_budget": "100-130 cr", "max_limit": 135, "fascia": 1},
-                {"slot": 2, "name": "2° Portiere: Riserva Blocco", "target_budget": "1-5 cr", "max_limit": 8, "fascia": 2},
-                {"slot": 3, "name": "3° Portiere: Terzo Portiere", "target_budget": "1 cr", "max_limit": 2, "fascia": 3},
+                {"slot": 1, "name": "1° Portiere: Top Portiere Squadra Scudetto", "target_budget": "70-110 cr", "max_limit": 125, "fascia": 1},
+                {"slot": 2, "name": "2° Portiere: Alternanza o Riserva Blocco", "target_budget": "1-25 cr", "max_limit": 30, "fascia": 2},
+                {"slot": 3, "name": "3° Portiere: Terzo Portiere / Copertura", "target_budget": "1-3 cr", "max_limit": 5, "fascia": 3},
                 {"slot": 4, "name": "4° Portiere: Quarto Portiere", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
             ]
         }
@@ -244,43 +272,44 @@ TACTICAL_PRESETS = {
         "name": "Centrocampo Dominante (Doppio Top CEN)",
         "badge": "CEN 37%",
         "description": "Acquista 2 centrocampisti rigoristi/top da 8-12 gol (Calhanoglu, McTominay, Paz). Attacco formato da 3 titolari continui.",
+        "split_pct": {"P": 0.09, "D": 0.12, "C": 0.37, "A": 0.42},
         "split": {"P": "90 cr (9%)", "D": "120 cr (12%)", "C": "370 cr (37%)", "A": "420 cr (42%)"},
         "slots": {
             "C": [
-                {"slot": 1, "name": "1° Slot: Top Centrocampista Primario (Piazzati/Rigorista)", "target_budget": "160-200 cr", "max_limit": 210, "fascia": 1},
-                {"slot": 2, "name": "2° Slot: Secondo Top Centrocampista", "target_budget": "110-140 cr", "max_limit": 150, "fascia": 1},
-                {"slot": 3, "name": "3° Slot: Titolare Bonus Continuo", "target_budget": "35-50 cr", "max_limit": 60, "fascia": 2},
-                {"slot": 4, "name": "4° Slot: Regolarista Affidabile", "target_budget": "15-25 cr", "max_limit": 30, "fascia": 3},
-                {"slot": 5, "name": "5° Slot: Titolare Squadra Media", "target_budget": "8-15 cr", "max_limit": 18, "fascia": 3},
-                {"slot": 6, "name": "6° Slot: Copertura", "target_budget": "4-10 cr", "max_limit": 12, "fascia": 3},
-                {"slot": 7, "name": "7° Slot: Profilo Emergente", "target_budget": "1-5 cr", "max_limit": 6, "fascia": 4},
+                {"slot": 1, "name": "1° Slot: Top Centrocampista Rigorista", "target_budget": "140-180 cr", "max_limit": 195, "fascia": 1},
+                {"slot": 2, "name": "2° Slot: Secondo Top Centrocampo", "target_budget": "90-130 cr", "max_limit": 140, "fascia": 1},
+                {"slot": 3, "name": "3° Slot: Titolare Alta MV", "target_budget": "40-60 cr", "max_limit": 70, "fascia": 2},
+                {"slot": 4, "name": "4° Slot: Regolarista Squadra Media", "target_budget": "20-35 cr", "max_limit": 40, "fascia": 2},
+                {"slot": 5, "name": "5° Slot: Titolare Low-Cost", "target_budget": "10-20 cr", "max_limit": 25, "fascia": 3},
+                {"slot": 6, "name": "6° Slot: Copertura", "target_budget": "5-10 cr", "max_limit": 12, "fascia": 3},
+                {"slot": 7, "name": "7° Slot: Scommessa", "target_budget": "2-5 cr", "max_limit": 6, "fascia": 4},
                 {"slot": 8, "name": "8° Slot: Riserva", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
                 {"slot": 9, "name": "9° Slot: Chiusura", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
             ],
             "A": [
-                {"slot": 1, "name": "1° Slot: Attaccante Semi-Top (Riferimento)", "target_budget": "180-220 cr", "max_limit": 240, "fascia": 2},
-                {"slot": 2, "name": "2° Slot: Secondo Attaccante Titolare", "target_budget": "100-130 cr", "max_limit": 140, "fascia": 2},
-                {"slot": 3, "name": "3° Slot: Terzo Attaccante da Bonus", "target_budget": "60-80 cr", "max_limit": 90, "fascia": 2},
-                {"slot": 4, "name": "4° Slot: Opportunità / Titolare", "target_budget": "20-35 cr", "max_limit": 40, "fascia": 3},
+                {"slot": 1, "name": "1° Slot: Primo Attaccante Titolare", "target_budget": "190-230 cr", "max_limit": 250, "fascia": 2},
+                {"slot": 2, "name": "2° Slot: Secondo Attaccante Titolare", "target_budget": "110-140 cr", "max_limit": 150, "fascia": 2},
+                {"slot": 3, "name": "3° Slot: Terzo Attaccante Titolare", "target_budget": "55-80 cr", "max_limit": 90, "fascia": 2},
+                {"slot": 4, "name": "4° Slot: Quarto Slot / Rotazione", "target_budget": "15-30 cr", "max_limit": 35, "fascia": 3},
                 {"slot": 5, "name": "5° Slot: Copertura", "target_budget": "5-12 cr", "max_limit": 15, "fascia": 3},
-                {"slot": 6, "name": "6° Slot: Scommessa a 1 cr", "target_budget": "1-4 cr", "max_limit": 5, "fascia": 4},
+                {"slot": 6, "name": "6° Slot: Scommessa a 1 cr", "target_budget": "1-3 cr", "max_limit": 4, "fascia": 4},
                 {"slot": 7, "name": "7° Slot: Chiusura Reparto", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
             ],
             "D": [
-                {"slot": 1, "name": "1° Slot: Difensore Semi-Top", "target_budget": "35-50 cr", "max_limit": 55, "fascia": 2},
-                {"slot": 2, "name": "2° Slot: Titolare Squadra Top", "target_budget": "20-30 cr", "max_limit": 35, "fascia": 2},
-                {"slot": 3, "name": "3° Slot: Titolare Sicuro", "target_budget": "12-20 cr", "max_limit": 25, "fascia": 3},
+                {"slot": 1, "name": "1° Slot: Difensore Primario", "target_budget": "30-50 cr", "max_limit": 55, "fascia": 2},
+                {"slot": 2, "name": "2° Slot: Titolare Sicuro", "target_budget": "20-30 cr", "max_limit": 35, "fascia": 2},
+                {"slot": 3, "name": "3° Slot: Titolare Squadra Media", "target_budget": "12-20 cr", "max_limit": 25, "fascia": 3},
                 {"slot": 4, "name": "4° Slot: Regolarista", "target_budget": "8-15 cr", "max_limit": 18, "fascia": 3},
                 {"slot": 5, "name": "5° Slot: Terzino Low Cost", "target_budget": "4-10 cr", "max_limit": 12, "fascia": 3},
-                {"slot": 6, "name": "6° Slot: Titolare Provincia", "target_budget": "2-6 cr", "max_limit": 8, "fascia": 4},
+                {"slot": 6, "name": "6° Slot: Titolare Provincia", "target_budget": "2-5 cr", "max_limit": 6, "fascia": 4},
                 {"slot": 7, "name": "7° Slot: Copertura", "target_budget": "1 cr", "max_limit": 3, "fascia": 4},
                 {"slot": 8, "name": "8° Slot: Riserva", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
                 {"slot": 9, "name": "9° Slot: Chiusura", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
             ],
             "P": [
-                {"slot": 1, "name": "1° Portiere: Titolare Fascia Media/Top", "target_budget": "70-90 cr", "max_limit": 95, "fascia": 1},
-                {"slot": 2, "name": "2° Portiere: Riserva Blocco", "target_budget": "1-5 cr", "max_limit": 8, "fascia": 2},
-                {"slot": 3, "name": "3° Portiere: Terzo Portiere", "target_budget": "1 cr", "max_limit": 2, "fascia": 3},
+                {"slot": 1, "name": "1° Portiere: Titolare (Top o Fascia Media)", "target_budget": "35-80 cr", "max_limit": 85, "fascia": 1},
+                {"slot": 2, "name": "2° Portiere: Alternanza o Riserva Blocco", "target_budget": "1-25 cr", "max_limit": 30, "fascia": 2},
+                {"slot": 3, "name": "3° Portiere: Terzo Portiere / Copertura", "target_budget": "1-3 cr", "max_limit": 5, "fascia": 3},
                 {"slot": 4, "name": "4° Portiere: Quarto Portiere", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
             ]
         }
@@ -290,6 +319,7 @@ TACTICAL_PRESETS = {
         "name": "Equilibrata Moneyball (Profondità & Valore)",
         "badge": "EQUILIBRATA",
         "description": "Nessun giocatore oltre i 205 crediti. Massimizza il surplus di valore statistico e garantisce 29 titolari affidabili.",
+        "split_pct": {"P": 0.10, "D": 0.16, "C": 0.26, "A": 0.48},
         "split": {"P": "100 cr (10%)", "D": "160 cr (16%)", "C": "260 cr (26%)", "A": "480 cr (48%)"},
         "slots": {
             "A": [
@@ -324,9 +354,9 @@ TACTICAL_PRESETS = {
                 {"slot": 9, "name": "9° Slot: Chiusura", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
             ],
             "P": [
-                {"slot": 1, "name": "1° Portiere: Titolare Blocco Solido", "target_budget": "80-100 cr", "max_limit": 105, "fascia": 1},
-                {"slot": 2, "name": "2° Portiere: Riserva Blocco", "target_budget": "1-5 cr", "max_limit": 8, "fascia": 2},
-                {"slot": 3, "name": "3° Portiere: Terzo Portiere", "target_budget": "1 cr", "max_limit": 2, "fascia": 3},
+                {"slot": 1, "name": "1° Portiere: Titolare Solido / Value", "target_budget": "35-80 cr", "max_limit": 85, "fascia": 1},
+                {"slot": 2, "name": "2° Portiere: Alternanza o Riserva Blocco", "target_budget": "1-25 cr", "max_limit": 30, "fascia": 2},
+                {"slot": 3, "name": "3° Portiere: Terzo Portiere / Copertura", "target_budget": "1-3 cr", "max_limit": 5, "fascia": 3},
                 {"slot": 4, "name": "4° Portiere: Quarto Portiere", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
             ]
         }
@@ -336,6 +366,7 @@ TACTICAL_PRESETS = {
         "name": "Personalizzata (Custom)",
         "badge": "PERSONALIZZATA",
         "description": "Configura liberamente la suddivisione del budget per reparto e personalizza i tetti Stop-Loss e le fasce per ogni singolo slot.",
+        "split_pct": {"P": 0.08, "D": 0.12, "C": 0.25, "A": 0.55},
         "split": {"P": "80 cr (8%)", "D": "120 cr (12%)", "C": "250 cr (25%)", "A": "550 cr (55%)"},
         "slots": {
             "A": [
@@ -370,9 +401,9 @@ TACTICAL_PRESETS = {
                 {"slot": 9, "name": "9° Slot: Chiusura", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
             ],
             "P": [
-                {"slot": 1, "name": "1° Portiere: Titolare Blocco Primario", "target_budget": "60-80 cr", "max_limit": 85, "fascia": 1},
-                {"slot": 2, "name": "2° Portiere: Riserva Blocco", "target_budget": "1-3 cr", "max_limit": 5, "fascia": 2},
-                {"slot": 3, "name": "3° Portiere: Terzo Portiere", "target_budget": "1 cr", "max_limit": 2, "fascia": 3},
+                {"slot": 1, "name": "1° Portiere: Titolare Primario", "target_budget": "35-80 cr", "max_limit": 85, "fascia": 1},
+                {"slot": 2, "name": "2° Portiere: Alternanza o Riserva Blocco", "target_budget": "1-25 cr", "max_limit": 30, "fascia": 2},
+                {"slot": 3, "name": "3° Portiere: Terzo Portiere / Copertura", "target_budget": "1-3 cr", "max_limit": 5, "fascia": 3},
                 {"slot": 4, "name": "4° Portiere: Quarto Portiere", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
             ]
         }
@@ -383,48 +414,55 @@ DEFAULT_TACTIC_ID = "trazione_anteriore"
 
 
 def load_dataset():
-    """Loads player dataset and assigns VORP value tiers."""
+    """Loads player dataset and assigns market value tiers (Fasce 1-4) per macro-role using domain-calibrated fair prices."""
     df = pd.read_csv(DATA_PATH)
 
-    def assign_fascia(row):
-        fvm = row.get("FVM_1000", 0)
-        role = row["role"]
-        if role == "A":
-            if fvm >= 240: return 1
-            elif fvm >= 95: return 2
-            elif fvm >= 45: return 3
-            else: return 4
-        elif role == "C":
-            if fvm >= 140: return 1
-            elif fvm >= 60: return 2
-            elif fvm >= 25: return 3
-            else: return 4
-        elif role == "D":
-            if fvm >= 80: return 1
-            elif fvm >= 40: return 2
-            elif fvm >= 15: return 3
-            else: return 4
-        else:  # P
-            if fvm >= 40: return 1
-            elif fvm >= 10: return 2
-            else: return 3
+    df["fascia"] = 4
+    for role in ["P", "D", "C", "A"]:
+        mask = df["role"] == role
+        if not mask.any():
+            continue
+        if role == "P":
+            # Domain-calibrated tiers for goalkeepers (reflecting true starter vs backup value):
+            # F1: Top big clubs (>= 50 cr): Svilar, Vicario, Martinez, Carnesecchi, Maignan, Butez, Meret
+            # F2: Semitop / Solid starters (20-49 cr): Mandas, Skorupski, De Gea, Okoye, Falcone, Perri, Sanchez, Caprile
+            # F3: Low-cost starters / Battles (6-19 cr): Muric, Bijlow, Palmisani, Stankovic, Tornqvist, Corvi, Daffara
+            # F4: Backups & 1-credit reserves (<= 5 cr)
+            prices = df.loc[mask, "prezzo_fair_1000"].fillna(1)
+            df.loc[mask & (prices >= 50), "fascia"] = 1
+            df.loc[mask & (prices >= 20) & (prices < 50), "fascia"] = 2
+            df.loc[mask & (prices >= 6) & (prices < 20), "fascia"] = 3
+            df.loc[mask & (prices < 6), "fascia"] = 4
+        else:
+            # For outfielders, use fair auction price quantiles
+            prices = df.loc[mask, "prezzo_fair_1000"].fillna(1)
+            q1 = prices.quantile(0.85)
+            q2 = prices.quantile(0.55)
+            q3 = prices.quantile(0.20)
+            df.loc[mask & (prices >= q1), "fascia"] = 1
+            df.loc[mask & (prices < q1) & (prices >= q2), "fascia"] = 2
+            df.loc[mask & (prices < q2) & (prices >= q3), "fascia"] = 3
+            df.loc[mask & (prices < q3), "fascia"] = 4
 
-    df["fascia"] = df.apply(assign_fascia, axis=1)
     return df
 
 
 def load_league_settings():
-    """Load league settings from file, or return defaults from config cascade."""
+    """Load league settings from file, in-memory cache, or return defaults from config cascade."""
+    global _IN_MEMORY_SETTINGS
     if os.path.exists(SETTINGS_PATH):
         try:
             with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
                 settings = json.load(f)
-                # Validate structure
                 if "budget" in settings and "roster_slots" in settings and "teams" in settings:
+                    _IN_MEMORY_SETTINGS = settings
                     return settings
         except Exception:
             pass
-    # Return defaults from config cascade
+
+    if _IN_MEMORY_SETTINGS is not None:
+        return _IN_MEMORY_SETTINGS
+
     return {
         "budget": DEFAULT_BUDGET,
         "roster_slots": DEFAULT_ROSTER_SLOTS,
@@ -433,7 +471,9 @@ def load_league_settings():
 
 
 def save_league_settings(settings):
-    """Persist league settings to file."""
+    """Persist league settings to file and in-memory cache."""
+    global _IN_MEMORY_SETTINGS
+    _IN_MEMORY_SETTINGS = settings
     try:
         with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
             json.dump(settings, f, ensure_ascii=False, indent=2)
@@ -516,47 +556,56 @@ def recalculate_team_metrics(team, budget_total, roster_structure=None):
 
 def load_state():
     """
-    Load auction state from file and automatically synchronize with current league settings:
-    - Team names and is_me flags always match league_settings.json
-    - Budget total and roster slots are reconciled
-    - Team financial metrics are recomputed
+    Load auction state from file or in-memory cache and automatically synchronize with current league settings.
     """
+    global _IN_MEMORY_STATE
     settings = load_league_settings()
     settings_budget = settings.get("budget", DEFAULT_BUDGET)
     settings_slots = settings.get("roster_slots", DEFAULT_ROSTER_SLOTS)
     settings_teams = settings.get("teams", DEFAULT_TEAMS)
 
+    state = None
     if os.path.exists(STATE_PATH):
         try:
             with open(STATE_PATH, "r", encoding="utf-8") as f:
                 state = json.load(f)
-                if isinstance(state.get("teams"), list) and isinstance(state.get("assigned_players"), dict):
-                    state["budget_total"] = settings_budget
-                    state["roster_structure"] = dict(settings_slots)
-
-                    # Synchronize team names & is_me from league settings
-                    teams_map = {t["id"]: t for t in settings_teams}
-                    updated_teams = []
-                    for i, st_team in enumerate(state.get("teams", [])):
-                        tid = st_team.get("id", i + 1)
-                        if tid in teams_map:
-                            st_team["name"] = teams_map[tid]["name"]
-                            st_team["is_me"] = teams_map[tid].get("is_me", False)
-                        elif i < len(settings_teams):
-                            st_team["name"] = settings_teams[i]["name"]
-                            st_team["is_me"] = settings_teams[i].get("is_me", False)
-
-                        recalculate_team_metrics(st_team, settings_budget, settings_slots)
-                        updated_teams.append(st_team)
-
-                    state["teams"] = updated_teams
-                    return state
         except Exception:
-            pass
-    return get_initial_state()
+            state = None
+
+    if state is None and _IN_MEMORY_STATE is not None:
+        state = _IN_MEMORY_STATE
+
+    if state and isinstance(state.get("teams"), list) and isinstance(state.get("assigned_players"), dict):
+        state["budget_total"] = settings_budget
+        state["roster_structure"] = dict(settings_slots)
+
+        # Synchronize team names & is_me from league settings
+        teams_map = {t["id"]: t for t in settings_teams}
+        updated_teams = []
+        for i, st_team in enumerate(state.get("teams", [])):
+            tid = st_team.get("id", i + 1)
+            if tid in teams_map:
+                st_team["name"] = teams_map[tid]["name"]
+                st_team["is_me"] = teams_map[tid].get("is_me", False)
+            elif i < len(settings_teams):
+                st_team["name"] = settings_teams[i]["name"]
+                st_team["is_me"] = settings_teams[i].get("is_me", False)
+
+            recalculate_team_metrics(st_team, settings_budget, settings_slots)
+            updated_teams.append(st_team)
+
+        state["teams"] = updated_teams
+        _IN_MEMORY_STATE = state
+        return state
+
+    initial = get_initial_state()
+    _IN_MEMORY_STATE = initial
+    return initial
 
 
 def save_state(state):
+    global _IN_MEMORY_STATE
+    _IN_MEMORY_STATE = state
     try:
         with open(STATE_PATH, "w", encoding="utf-8") as f:
             json.dump(state, f, ensure_ascii=False, indent=2)
@@ -653,18 +702,23 @@ def send_static(path):
 
 @app.route("/api/settings")
 def api_get_settings():
-    """Return current league settings (budget, slots, teams)."""
+    """Return current league settings (budget, slots, teams) and environment metadata."""
     settings = load_league_settings()
-    return jsonify({"settings": settings})
+    return jsonify({
+        "settings": settings,
+        "app_env": APP_ENV,
+        "is_personal": IS_PERSONAL
+    })
 
 
 @app.route("/api/settings", methods=["POST"])
 def api_save_settings():
-    """Save league settings from UI. Resets auction state if budget/slots changed."""
+    """Save league settings from UI. Resets auction state if budget/slots changed or force_reset is True."""
     data = request.json or {}
     budget = int(data.get("budget", DEFAULT_BUDGET))
     roster_slots = data.get("roster_slots", DEFAULT_ROSTER_SLOTS)
     teams_raw = data.get("teams", DEFAULT_TEAMS)
+    force_reset = bool(data.get("force_reset", False))
 
     # Validate
     if budget < 100 or budget > 5000:
@@ -691,7 +745,7 @@ def api_save_settings():
 
     # Check if structural change requires state reset
     old_settings = load_league_settings()
-    needs_reset = (
+    needs_reset = force_reset or (
         old_settings["budget"] != budget or
         old_settings["roster_slots"] != roster_slots or
         len(old_settings["teams"]) != len(teams)
@@ -703,7 +757,7 @@ def api_save_settings():
         # Reset auction state with new settings
         new_state = get_initial_state()
         save_state(new_state)
-        return jsonify({"success": True, "reset": True, "message": "Impostazioni salvate. Asta resettata per nuova configurazione."})
+        return jsonify({"success": True, "reset": True, "message": "Impostazioni salvate. Asta inizializzata con la nuova configurazione."})
 
     # Immediately sync team names and settings into state file
     state = load_state()
@@ -815,6 +869,44 @@ def api_players():
         vorp_val = custom_vorp.get(p_name, float(row.get("vorp_points", 0)))
 
         assignment_info = assigned.get(p_name)
+
+        # Medical & Physical Fragility Audit (Transfermarkt)
+        inj_info = _INJURIES_CACHE.get(p_name, {})
+        days_lost = int(row.get("giorni_infortunio_3y", 0)) if pd.notna(row.get("giorni_infortunio_3y")) else inj_info.get("giorni_infortunio_3y", 0)
+        inj_count = int(row.get("n_infortuni_3y", 0)) if pd.notna(row.get("n_infortuni_3y")) else inj_info.get("n_infortuni_3y", 0)
+        severe_inj = bool(row.get("infortunio_grave", 0)) if pd.notna(row.get("infortunio_grave")) else bool(inj_info.get("infortunio_grave", 0))
+        recent_injuries = inj_info.get("dettaglio_infortuni", [])
+
+        if days_lost < 15 and not severe_inj:
+            med_status = "safe"
+            med_label = "Affidabile"
+            med_badge = "🟢"
+        elif days_lost <= 60 and not severe_inj:
+            med_status = "warning"
+            med_label = "Da Monitorare"
+            med_badge = "🟡"
+        else:
+            med_status = "danger"
+            med_label = "Fragile / Alto Rischio"
+            med_badge = "🔴"
+
+        # Understat Offensive Metrics
+        xg_p90 = round(float(row.get("xg_per90", 0)), 3) if pd.notna(row.get("xg_per90")) else 0.0
+        npxg_p90 = round(float(row.get("npxg_per90", 0)), 3) if pd.notna(row.get("npxg_per90")) else 0.0
+        xa_p90 = round(float(row.get("xa_per90", 0)), 3) if pd.notna(row.get("xa_per90")) else 0.0
+        shots_p90 = round(float(row.get("shots_per90", 0)), 2) if pd.notna(row.get("shots_per90")) else 0.0
+
+        # Delta Realizzativo (Goals vs xG)
+        gol_rate = float(row.get("gol_per_pg", 0)) if pd.notna(row.get("gol_per_pg")) else 0.0
+        xg_avg = float(row.get("xg_media_3y", 0)) if pd.notna(row.get("xg_media_3y")) else 0.0
+        delta_goals_xg = round((gol_rate * 30.0) - xg_avg, 2) if (gol_rate > 0 or xg_avg > 0) else 0.0
+
+        # Quantiles & Volatility (Gradient Boosting)
+        p10 = float(row.get("predicted_pts_p10", 0)) if pd.notna(row.get("predicted_pts_p10")) else 0.0
+        p50 = float(row.get("predicted_pts_p50", 0)) if pd.notna(row.get("predicted_pts_p50")) else 0.0
+        p90 = float(row.get("predicted_pts_p90", 0)) if pd.notna(row.get("predicted_pts_p90")) else 0.0
+        spread = float(row.get("pts_volatility_spread", 0)) if pd.notna(row.get("pts_volatility_spread")) else round(p90 - p10, 1)
+
         records.append({
             "player": p_name,
             "role": row["role"],
@@ -827,12 +919,12 @@ def api_players():
             "price_fair_live": fair_live,
             "surplus_value": int(row.get("surplus_value_cr", 0)),
             "score": float(row.get("score_composito", 0)),
-            "pts_exp": float(row.get("predicted_pts_p50", 0)),
-            "pts_floor": float(row.get("predicted_pts_p10", 0)),
-            "pts_ceil": float(row.get("predicted_pts_p90", 0)),
-            "pts_spread": float(row.get("pts_volatility_spread", 0)),
+            "pts_exp": p50,
+            "pts_floor": p10,
+            "pts_ceil": p90,
+            "pts_spread": spread,
             "vorp": vorp_val,
-            "injury_days": int(row.get("giorni_infortunio_3y", 0)),
+            "injury_days": days_lost,
             "injury_malus": float(row.get("malus_infortuni", 0)),
             "fascia": int(row["fascia"]),
             "is_starter_2627": bool(row.get("is_starter_2627", False)),
@@ -842,7 +934,31 @@ def api_players():
             "xa_3y": float(row.get("xa_media_3y", 0)) if pd.notna(row.get("xa_media_3y")) else None,
             "is_assigned": is_assigned,
             "assignment": assignment_info,
-            "is_favorite": p_name in favorites
+            "is_favorite": p_name in favorites,
+            "medical": {
+                "days_lost_3y": days_lost,
+                "injuries_count_3y": inj_count,
+                "infortunio_grave": severe_inj,
+                "status": med_status,
+                "status_label": med_label,
+                "status_badge": med_badge,
+                "dettaglio_infortuni": recent_injuries
+            },
+            "understat": {
+                "xg_per90": xg_p90,
+                "npxg_per90": npxg_p90,
+                "xa_per90": xa_p90,
+                "shots_per90": shots_p90,
+                "delta_goals_xg": delta_goals_xg
+            },
+            "quantiles": {
+                "floor_p10": p10,
+                "expected_p50": p50,
+                "ceiling_p90": p90,
+                "spread": spread,
+                "profile_label": "Regolarista da Modificatore" if spread < 135 else "Boom-or-Bust / Alta Volatilità",
+                "profile_badge": "🛡️ Regolarista" if spread < 135 else "⚡ Boom-or-Bust"
+            }
         })
 
     return jsonify({
@@ -902,8 +1018,14 @@ def api_sync_state():
 def api_assign():
     data = request.json or {}
     player_name = data.get("player")
-    team_id = int(data.get("team_id", 1))
-    price = int(data.get("price", 1))
+    try:
+        team_id = int(data.get("team_id", 1))
+    except (ValueError, TypeError):
+        team_id = 1
+    try:
+        price = int(data.get("price", 1))
+    except (ValueError, TypeError):
+        price = 1
 
     if not player_name:
         return jsonify({"error": "Specificare il calciatore"}), 400
@@ -924,11 +1046,20 @@ def api_assign():
     roster_structure = state.get("roster_structure", DEFAULT_ROSTER_SLOTS)
     max_slots_for_role = roster_structure.get(role, 3)
 
-    if team["counts"][role] >= max_slots_for_role:
-        return jsonify({"error": f"{team['name']} ha già completato i {max_slots_for_role} slot per il ruolo {role}."}), 400
+    if team["counts"].get(role, 0) >= max_slots_for_role:
+        return jsonify({"error": f"{team['name']} ha già completato i {max_slots_for_role} slot previsti per il ruolo {role}."}), 400
+
+    # Ensure team metrics are freshly synchronized with current budget
+    recalculate_team_metrics(team, state["budget_total"], roster_structure)
+
+    if price > team["remaining"]:
+        return jsonify({"error": f"Crediti insufficienti per {team['name']}: disponibili {team['remaining']} cr, offerta {price} cr."}), 400
 
     if price > team["max_bid"] and team["total_slots_left"] > 1:
-        return jsonify({"error": f"Offerta ({price} cr) superiore al limite massimo consentito per {team['name']} ({team['max_bid']} cr)."}), 400
+        return jsonify({
+            "error": f"Offerta ({price} cr) superiore al limite massimo consentito per {team['name']} ({team['max_bid']} cr). "
+                     f"Devi conservare almeno 1 credito per ciascuno dei {team['total_slots_left'] - 1} slot rimanenti."
+        }), 400
 
     player_item = {
         "player": player_name,
@@ -956,7 +1087,11 @@ def api_assign():
     recalculate_team_metrics(team, state["budget_total"], state.get("roster_structure"))
     save_state(state)
 
-    return jsonify({"success": True, "state": state})
+    return jsonify({
+        "success": True,
+        "state": state,
+        "message": f"Assegnato {player_name} ({role}) a {team['name']} per {price} cr"
+    })
 
 
 @app.route("/api/undo", methods=["POST"])
@@ -3117,6 +3252,155 @@ HTML_TEMPLATE = """
         </div>
     </div>
 
+    <!-- PLAYER DETAIL DRAWER (Finestra Medica & Metriche Avanzate) -->
+    <div id="playerDetailDrawer" class="modal-backdrop" style="display:none; z-index:9999;">
+        <div id="playerDetailPanel" style="
+            position:fixed; top:0; right:-480px; width:min(480px, 96vw); height:100vh;
+            background:var(--bg); border-left:2px solid var(--primary);
+            overflow-y:auto; padding:20px 18px 32px; transition:right 0.35s cubic-bezier(.4,0,.2,1);
+            box-shadow:-8px 0 32px rgba(0,0,0,0.6); z-index:10000;
+        ">
+            <!-- Header -->
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                <div>
+                    <div id="pdName" style="font-size:1.25rem; font-weight:900; color:var(--text);"></div>
+                    <div style="display:flex; gap:6px; align-items:center; margin-top:3px;">
+                        <span id="pdRole" class="role-badge" style="font-size:0.72rem; padding:2px 8px;"></span>
+                        <span id="pdTeam" style="font-size:0.82rem; color:var(--text-muted); font-weight:600;"></span>
+                    </div>
+                </div>
+                <button onclick="closePlayerDetailDrawer()" style="background:transparent; border:none; color:var(--text-muted); font-size:1.4rem; cursor:pointer; padding:4px 8px;">✕</button>
+            </div>
+
+            <!-- Price & Value Summary Bar -->
+            <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; margin-bottom:16px;">
+                <div style="background:#0b111e; border:1px solid var(--border); border-radius:8px; padding:8px 6px; text-align:center;">
+                    <div style="font-size:0.62rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Fair Value</div>
+                    <div id="pdFairPrice" style="font-size:1.1rem; font-weight:900; color:var(--gold);"></div>
+                </div>
+                <div style="background:#0b111e; border:1px solid var(--border); border-radius:8px; padding:8px 6px; text-align:center;">
+                    <div style="font-size:0.62rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">VORP</div>
+                    <div id="pdVorp" style="font-size:1.1rem; font-weight:900; color:var(--primary);"></div>
+                </div>
+                <div style="background:#0b111e; border:1px solid var(--border); border-radius:8px; padding:8px 6px; text-align:center;">
+                    <div style="font-size:0.62rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Score</div>
+                    <div id="pdScore" style="font-size:1.1rem; font-weight:900; color:var(--accent);"></div>
+                </div>
+                <div style="background:#0b111e; border:1px solid var(--border); border-radius:8px; padding:8px 6px; text-align:center;">
+                    <div style="font-size:0.62rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Fascia</div>
+                    <div id="pdFascia" style="font-size:1.1rem; font-weight:900; color:var(--primary);"></div>
+                </div>
+            </div>
+
+            <!-- SECTION: Finestra Medica -->
+            <div style="background:#0b111e; border:1px solid var(--border); border-radius:10px; padding:14px; margin-bottom:14px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <b style="font-size:0.88rem; color:var(--primary);">🏥 Finestra Medica</b>
+                    <span id="pdMedBadge" style="font-size:0.78rem; font-weight:800; padding:3px 10px; border-radius:12px;"></span>
+                </div>
+                <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-bottom:10px;">
+                    <div style="text-align:center;">
+                        <div style="font-size:0.62rem; color:var(--text-muted); font-weight:700;">GIORNI PERSI (3Y)</div>
+                        <div id="pdDaysLost" style="font-size:1.3rem; font-weight:900; color:var(--text);"></div>
+                    </div>
+                    <div style="text-align:center;">
+                        <div style="font-size:0.62rem; color:var(--text-muted); font-weight:700;">N° INFORTUNI</div>
+                        <div id="pdInjCount" style="font-size:1.3rem; font-weight:900; color:var(--text);"></div>
+                    </div>
+                    <div style="text-align:center;">
+                        <div style="font-size:0.62rem; color:var(--text-muted); font-weight:700;">INF. GRAVE</div>
+                        <div id="pdSevere" style="font-size:1.3rem; font-weight:900;"></div>
+                    </div>
+                </div>
+                <div id="pdInjuryList" style="max-height:120px; overflow-y:auto; font-size:0.76rem; color:var(--text-muted); line-height:1.6;"></div>
+            </div>
+
+            <!-- SECTION: Understat Offensive Metrics -->
+            <div style="background:#0b111e; border:1px solid var(--border); border-radius:10px; padding:14px; margin-bottom:14px;">
+                <b style="font-size:0.88rem; color:var(--primary); display:block; margin-bottom:10px;">⚽ Volumi Offensivi (Understat)</b>
+                <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-bottom:8px;">
+                    <div style="text-align:center;">
+                        <div style="font-size:0.62rem; color:var(--text-muted); font-weight:700;">xG / 90'</div>
+                        <div id="pdXg90" style="font-size:1.15rem; font-weight:900; color:var(--gold);"></div>
+                    </div>
+                    <div style="text-align:center;">
+                        <div style="font-size:0.62rem; color:var(--text-muted); font-weight:700;">npxG / 90'</div>
+                        <div id="pdNpxg90" style="font-size:1.15rem; font-weight:900; color:var(--gold);"></div>
+                    </div>
+                    <div style="text-align:center;">
+                        <div style="font-size:0.62rem; color:var(--text-muted); font-weight:700;">xA / 90'</div>
+                        <div id="pdXa90" style="font-size:1.15rem; font-weight:900; color:var(--accent);"></div>
+                    </div>
+                </div>
+                <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:8px;">
+                    <div style="text-align:center;">
+                        <div style="font-size:0.62rem; color:var(--text-muted); font-weight:700;">TIRI / 90'</div>
+                        <div id="pdShots90" style="font-size:1.15rem; font-weight:900; color:var(--text);"></div>
+                    </div>
+                    <div style="text-align:center;">
+                        <div style="font-size:0.62rem; color:var(--text-muted); font-weight:700;">Δ GOL vs xG</div>
+                        <div id="pdDeltaXg" style="font-size:1.15rem; font-weight:900;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION: Quantile Volatility Profile -->
+            <div style="background:#0b111e; border:1px solid var(--border); border-radius:10px; padding:14px; margin-bottom:14px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <b style="font-size:0.88rem; color:var(--primary);">📊 Profilo Quantilico</b>
+                    <span id="pdProfileBadge" style="font-size:0.75rem; font-weight:800; padding:3px 10px; border-radius:12px;"></span>
+                </div>
+                <!-- Visual Bar P10 → P50 → P90 -->
+                <div style="position:relative; background:var(--bg-card); border-radius:8px; height:32px; margin-bottom:10px; overflow:hidden;">
+                    <div id="pdQuantileBar" style="position:absolute; top:0; height:100%; border-radius:8px; transition:all 0.5s;"></div>
+                    <div id="pdQuantileP50Mark" style="position:absolute; top:0; height:100%; width:3px; background:var(--gold); border-radius:2px; z-index:2;"></div>
+                </div>
+                <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px;">
+                    <div style="text-align:center;">
+                        <div style="font-size:0.62rem; color:var(--text-muted); font-weight:700;">FLOOR P10</div>
+                        <div id="pdP10" style="font-size:1.1rem; font-weight:900; color:#ef4444;"></div>
+                    </div>
+                    <div style="text-align:center;">
+                        <div style="font-size:0.62rem; color:var(--text-muted); font-weight:700;">MEDIANA P50</div>
+                        <div id="pdP50" style="font-size:1.1rem; font-weight:900; color:var(--gold);"></div>
+                    </div>
+                    <div style="text-align:center;">
+                        <div style="font-size:0.62rem; color:var(--text-muted); font-weight:700;">CEILING P90</div>
+                        <div id="pdP90" style="font-size:1.1rem; font-weight:900; color:#22c55e;"></div>
+                    </div>
+                    <div style="text-align:center;">
+                        <div style="font-size:0.62rem; color:var(--text-muted); font-weight:700;">SPREAD</div>
+                        <div id="pdSpread" style="font-size:1.1rem; font-weight:900; color:var(--primary);"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION: Starter Status / Minutes -->
+            <div style="background:#0b111e; border:1px solid var(--border); border-radius:10px; padding:14px; margin-bottom:14px;">
+                <b style="font-size:0.88rem; color:var(--primary); display:block; margin-bottom:10px;">📋 Titolarità & Minuti 26/27</b>
+                <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px;">
+                    <div style="text-align:center;">
+                        <div style="font-size:0.62rem; color:var(--text-muted); font-weight:700;">TITOLARE</div>
+                        <div id="pdStarter" style="font-size:1.1rem; font-weight:900;"></div>
+                    </div>
+                    <div style="text-align:center;">
+                        <div style="font-size:0.62rem; color:var(--text-muted); font-weight:700;">PRESENZE DA TITOLARE</div>
+                        <div id="pdStarts" style="font-size:1.1rem; font-weight:900; color:var(--text);"></div>
+                    </div>
+                    <div style="text-align:center;">
+                        <div style="font-size:0.62rem; color:var(--text-muted); font-weight:700;">MINUTI</div>
+                        <div id="pdMinutes" style="font-size:1.1rem; font-weight:900; color:var(--text);"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Button -->
+            <button id="pdTargetBtn" class="btn btn-primary" style="width:100%; font-weight:800; letter-spacing:0.5px;" onclick="openTargetFromDetail()">
+                🎯 Aggiungi ai Target
+            </button>
+        </div>
+    </div>
+
     <!-- CUSTOM TACTICAL BLUEPRINT MODAL -->
     <div id="customConfigModal" class="modal-backdrop">
         <div class="modal-box" style="max-width:560px;">
@@ -3231,6 +3515,14 @@ HTML_TEMPLATE = """
                     <button class="btn-secondary" style="width:auto; padding:4px 10px; font-size:0.72rem; font-weight:700;" onclick="addSettingTeam()">+ Aggiungi</button>
                 </div>
                 <div id="settingTeamsList" style="max-height:180px; overflow-y:auto; display:flex; flex-direction:column; gap:6px;"></div>
+            </div>
+
+            <!-- Force Reset Option -->
+            <div style="background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25); border-radius:8px; padding:10px 12px; margin-bottom:14px;">
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.78rem; color:var(--text-muted);">
+                    <input type="checkbox" id="settingForceReset" style="accent-color:#ef4444; width:16px; height:16px;">
+                    <span><b style="color:#ef4444;">⚠️ Reset Completo:</b> Azzera tutte le assegnazioni, target e cache locale. Usa solo se cambi budget o numero squadre.</span>
+                </label>
             </div>
 
             <div style="display:flex; gap:8px;">
@@ -3440,6 +3732,142 @@ HTML_TEMPLATE = """
         }
 
         /* ─────────────────────────────────────────────────────────────
+           PLAYER DETAIL DRAWER (Finestra Medica & Metriche Avanzate)
+        ───────────────────────────────────────────────────────────── */
+        let _currentDetailPlayer = null;
+
+        function openPlayerDetailDrawer(playerName) {
+            const p = (cachedPlayers || []).find(x => x.player === playerName);
+            if (!p) return;
+            _currentDetailPlayer = p;
+
+            // Header
+            document.getElementById('pdName').textContent = p.player;
+            const roleEl = document.getElementById('pdRole');
+            roleEl.textContent = p.role;
+            roleEl.className = 'role-badge role-' + p.role.toLowerCase();
+            document.getElementById('pdTeam').textContent = p.team || '';
+
+            // Summary bar
+            document.getElementById('pdFairPrice').textContent = p.price_fair_live || p.price_fair_scaled || p.price_fair_1000;
+            document.getElementById('pdVorp').textContent = (p.vorp || 0).toFixed(1);
+            document.getElementById('pdScore').textContent = (p.score || 0).toFixed(1);
+            document.getElementById('pdFascia').textContent = p.fascia;
+
+            // Medical
+            const med = p.medical || {};
+            document.getElementById('pdDaysLost').textContent = med.days_lost_3y || 0;
+            document.getElementById('pdInjCount').textContent = med.injuries_count_3y || 0;
+
+            const severeEl = document.getElementById('pdSevere');
+            severeEl.textContent = med.infortunio_grave ? '⚠️ Sì' : '✅ No';
+            severeEl.style.color = med.infortunio_grave ? '#ef4444' : '#22c55e';
+
+            const medBadge = document.getElementById('pdMedBadge');
+            medBadge.textContent = (med.status_badge || '') + ' ' + (med.status_label || 'N/D');
+            if (med.status === 'safe') { medBadge.style.background = 'rgba(34,197,94,0.15)'; medBadge.style.color = '#22c55e'; }
+            else if (med.status === 'warning') { medBadge.style.background = 'rgba(234,179,8,0.15)'; medBadge.style.color = '#eab308'; }
+            else { medBadge.style.background = 'rgba(239,68,68,0.15)'; medBadge.style.color = '#ef4444'; }
+
+            const injList = document.getElementById('pdInjuryList');
+            const details = med.dettaglio_infortuni || [];
+            if (details.length > 0) {
+                injList.innerHTML = details.map(d => `<div style="padding:2px 0; border-bottom:1px solid var(--border);">• ${d}</div>`).join('');
+            } else {
+                injList.innerHTML = '<div style="color:var(--text-muted); font-style:italic;">Nessun dettaglio disponibile</div>';
+            }
+
+            // Understat
+            const us = p.understat || {};
+            document.getElementById('pdXg90').textContent = (us.xg_per90 || 0).toFixed(3);
+            document.getElementById('pdNpxg90').textContent = (us.npxg_per90 || 0).toFixed(3);
+            document.getElementById('pdXa90').textContent = (us.xa_per90 || 0).toFixed(3);
+            document.getElementById('pdShots90').textContent = (us.shots_per90 || 0).toFixed(2);
+
+            const deltaEl = document.getElementById('pdDeltaXg');
+            const deltaVal = us.delta_goals_xg || 0;
+            deltaEl.textContent = (deltaVal >= 0 ? '+' : '') + deltaVal.toFixed(2);
+            deltaEl.style.color = deltaVal >= 0 ? '#22c55e' : '#ef4444';
+
+            // Quantiles
+            const q = p.quantiles || {};
+            const p10 = q.floor_p10 || 0, p50 = q.expected_p50 || 0, p90 = q.ceiling_p90 || 0;
+            document.getElementById('pdP10').textContent = p10.toFixed(0);
+            document.getElementById('pdP50').textContent = p50.toFixed(0);
+            document.getElementById('pdP90').textContent = p90.toFixed(0);
+            document.getElementById('pdSpread').textContent = (q.spread || 0).toFixed(0);
+
+            const profBadge = document.getElementById('pdProfileBadge');
+            profBadge.textContent = q.profile_badge || '';
+            if ((q.spread || 0) < 135) { profBadge.style.background = 'rgba(99,102,241,0.15)'; profBadge.style.color = '#818cf8'; }
+            else { profBadge.style.background = 'rgba(245,158,11,0.15)'; profBadge.style.color = '#f59e0b'; }
+
+            // Quantile visual bar
+            const maxPts = Math.max(p90, 350);
+            const barLeft = (p10 / maxPts) * 100;
+            const barWidth = ((p90 - p10) / maxPts) * 100;
+            const p50Pos = (p50 / maxPts) * 100;
+            const qBar = document.getElementById('pdQuantileBar');
+            qBar.style.left = barLeft + '%';
+            qBar.style.width = barWidth + '%';
+            qBar.style.background = 'linear-gradient(90deg, #ef4444 0%, var(--gold) 50%, #22c55e 100%)';
+            qBar.style.opacity = '0.3';
+            document.getElementById('pdQuantileP50Mark').style.left = p50Pos + '%';
+
+            // Starter info
+            document.getElementById('pdStarter').textContent = p.is_starter_2627 ? '✅ Sì' : '❌ No';
+            document.getElementById('pdStarter').style.color = p.is_starter_2627 ? '#22c55e' : '#ef4444';
+            document.getElementById('pdStarts').textContent = p.starts_2627 || 0;
+            document.getElementById('pdMinutes').textContent = (p.minutes_2627 || 0).toLocaleString();
+
+            // Target button state
+            const btn = document.getElementById('pdTargetBtn');
+            if (p.is_assigned) {
+                btn.textContent = '✅ Già Assegnato';
+                btn.disabled = true;
+                btn.style.opacity = '0.5';
+            } else {
+                btn.textContent = '🎯 Aggiungi ai Target';
+                btn.disabled = false;
+                btn.style.opacity = '1';
+            }
+
+            // Show drawer with slide animation
+            const drawer = document.getElementById('playerDetailDrawer');
+            drawer.style.display = 'flex';
+            requestAnimationFrame(() => {
+                document.getElementById('playerDetailPanel').style.right = '0px';
+            });
+        }
+
+        function closePlayerDetailDrawer() {
+            document.getElementById('playerDetailPanel').style.right = '-480px';
+            setTimeout(() => {
+                document.getElementById('playerDetailDrawer').style.display = 'none';
+            }, 350);
+            _currentDetailPlayer = null;
+        }
+
+        function openTargetFromDetail() {
+            if (!_currentDetailPlayer) return;
+            closePlayerDetailDrawer();
+            const p = _currentDetailPlayer;
+            // Open the target/assign flow if available
+            if (typeof openAssignModal === 'function') {
+                openAssignModal(p.player);
+            } else if (typeof addToFavorites === 'function') {
+                addToFavorites(p.player);
+                showToast('🎯 ' + p.player + ' aggiunto ai Target', 'success');
+            }
+        }
+
+        // Close drawer on backdrop click
+        document.getElementById('playerDetailDrawer').addEventListener('click', function(e) {
+            if (e.target === this) closePlayerDetailDrawer();
+        });
+
+
+        /* ─────────────────────────────────────────────────────────────
            LEAGUE SETTINGS MODAL & API
         ───────────────────────────────────────────────────────────── */
         async function openLeagueSettingsModal() {
@@ -3543,10 +3971,13 @@ HTML_TEMPLATE = """
                 if (inp) t.name = inp.value.trim() || `Squadra ${idx+1}`;
             });
 
+            const forceResetEl = document.getElementById('settingForceReset');
+            const forceReset = forceResetEl ? forceResetEl.checked : false;
+
             const res = await fetch('/api/settings', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ budget, roster_slots: slots, teams })
+                body: JSON.stringify({ budget, roster_slots: slots, teams, force_reset: forceReset })
             });
             const data = await res.json();
             if (data.error) {
@@ -3557,9 +3988,19 @@ HTML_TEMPLATE = """
             closeLeagueSettingsModal();
             showToast(data.message || "Impostazioni salvate con successo!", "success");
 
-            if (data.reset) {
+            if (data.reset || forceReset) {
+                // Atomic localStorage invalidation
                 localStorage.removeItem('fanta_lab_auction_state');
-                showToast("Asta inizializzata con la nuova configurazione.", "info");
+                // Invalidate all profile target caches
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key && (key.startsWith('fanta_targets_profile_') || key.startsWith('slot_expanded_'))) {
+                        localStorage.removeItem(key);
+                        i--; // Adjust index after removal
+                    }
+                }
+                localStorage.removeItem('custom_tactic_config');
+                showToast("Asta inizializzata con la nuova configurazione. Cache locale invalidata.", "info");
             }
 
             await fetchState();
@@ -4837,6 +5278,18 @@ HTML_TEMPLATE = """
                 // Candidate ranking tailored by role & tactical blueprint with dynamic scaled prices
                 const candidates = availableRole.filter(p => {
                     const fair = p.price_fair_live || p.price_fair_scaled || p.price_fair_1000;
+                    if (role === 'P') {
+                        if (slotCfg.slot === 1) {
+                            // 1° Portiere: Titolari (Top ed Intermedi), prezzo fair >= 10 su 1000 (scalato) o titolare certificato
+                            return fair >= Math.max(2, Math.round(10 * scaleRatio)) || (p.is_starter_2627 && fair >= Math.max(1, Math.round(6 * scaleRatio)));
+                        } else if (slotCfg.slot === 2) {
+                            // 2° Portiere: Alternanza (intermedi 10-35 cr) o Riserva Blocco
+                            return fair <= Math.max(3, Math.round(scaledMax * 1.3));
+                        } else {
+                            // 3° e 4° Portiere: Riserve a basso costo / 1 cr
+                            return fair <= Math.max(2, Math.round(scaledMax * 1.5));
+                        }
+                    }
                     if (slotCfg.slot === 1) return fair >= Math.max(2, Math.round(scaledMax * 0.40));
                     if (slotCfg.slot === 2) return fair <= Math.round(scaledMax * 1.35) && fair >= Math.max(2, Math.round(15 * scaleRatio));
                     if (slotCfg.slot === 3) return fair <= Math.round(scaledMax * 1.4) && fair >= Math.max(1, Math.round(8 * scaleRatio));
@@ -5207,7 +5660,10 @@ HTML_TEMPLATE = """
                                     <svg class="nav-svg" style="width:14px; height:14px;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="2"></circle></svg>
                                 </button>
                                 <span class="badge badge-${p.role}">${p.role}</span>
-                                <span style="font-family:'Outfit',sans-serif; font-weight:700; font-size:1.05rem;">${p.player}</span>
+                                <span style="font-family:'Outfit',sans-serif; font-weight:700; font-size:1.05rem; cursor:pointer;" onclick="openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')"> ${p.player}</span>
+                                <button onclick="openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')"
+                                    title="Dettaglio Giocatore" style="background:transparent; border:none; cursor:pointer; font-size:0.82rem; padding:0 2px; opacity:0.65; transition:opacity 0.2s;"
+                                    onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.65'">ℹ️</button>
                                 <small style="color:var(--text-muted); font-weight:600;">(${p.team})</small>
                                 ${isStarter ? `<span class="scout-tag-starter">✓ Titolare</span>` : ''}
                                 ${isTarget ? `<span class="tier-badge tier-${targetInfo.priority}">T${targetInfo.priority} (Max ${targetInfo.max_price}cr)</span>` : ''}

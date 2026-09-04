@@ -27,21 +27,34 @@ lock = threading.Lock()
 cache = {}
 
 
+import random
+
+USER_AGENTS = [
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.6; rv:129.0) Gecko/20100101 Firefox/129.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0"
+]
+
+
 def clean_query(name):
     """Pulisce iniziali tipo ' L.' o ' Jo.' per la ricerca su Transfermarkt."""
     q = re.sub(r'\s+[A-Z][a-z]?\.$', '', name).strip()
     return q
 
 
-def fetch_url_with_retry(url, headers, max_retries=3, timeout=8):
-    """Esegue richiesta HTTP GET con retry esponenziale su 429/5xx/timeout."""
+def fetch_url_with_retry(url, headers=None, max_retries=3, timeout=8):
+    """Esegue richiesta HTTP GET con retry esponenziale su 403/429/5xx/timeout e User-Agent rotanti."""
+    req_headers = dict(headers or config.HEADERS)
     for attempt in range(max_retries):
+        req_headers["User-Agent"] = random.choice(USER_AGENTS)
         try:
-            resp = requests.get(url, headers=headers, timeout=timeout)
+            resp = requests.get(url, headers=req_headers, timeout=timeout)
             if resp.status_code == 200:
                 return resp
-            elif resp.status_code == 429:
-                sleep_time = (2 ** attempt) + 1.5
+            elif resp.status_code in (403, 429):
+                sleep_time = (2 ** attempt) + random.uniform(1.5, 3.0)
                 time.sleep(sleep_time)
             elif resp.status_code in (500, 502, 503, 504):
                 time.sleep(1.0 * (attempt + 1))
@@ -183,21 +196,43 @@ def main():
     print(f"  Profili TM trovati online: {found_count} / {len(cache)}")
 
     # FALLBACK GRACEFUL: se Transfermarkt ha bloccato/fallito e c'è uno storico locale
-    if found_count == 0 and os.path.exists(config.INJURIES_CSV):
-        print(f"  ⚠️ Nessun dato online estratto. Attivazione fallback dallo storico locale: {config.INJURIES_CSV}")
-        try:
-            hist_df = pd.read_csv(config.INJURIES_CSV)
-            hist_map = hist_df.set_index("player").to_dict(orient="index")
-            for p, d in hist_map.items():
-                cache[p] = {
-                    "giorni_infortunio_3y": d.get("giorni_infortunio_3y", 0),
-                    "n_infortuni_3y": d.get("n_infortuni_3y", 0),
-                    "infortunio_grave": d.get("infortunio_grave", 0),
-                    "tm_found": True
-                }
-            print(f"  ✅ Fallback completato: ripristinati dati per {len(hist_map)} calciatori.")
-        except Exception as e:
-            print(f"  ⚠️ Errore lettura fallback: {e}")
+    if found_count == 0:
+        print(f"  ⚠️ [WARNING] Nessun profilo online estratto (blocco anti-bot o timeout). Attivazione fallback locale.")
+        fallback_done = False
+
+        # 1. Prova prima dalla cache JSON esistente
+        cache_path = getattr(config, "INJURIES_CACHE_JSON", os.path.join(config.DATA_DIR, "tm_injuries_cache.json"))
+        if os.path.exists(cache_path):
+            try:
+                with open(cache_path, "r", encoding="utf-8") as f:
+                    local_cache = json.load(f)
+                    if local_cache and any(v.get("tm_found") for v in local_cache.values()):
+                        cache.update(local_cache)
+                        fallback_done = True
+                        print(f"  ✅ Fallback completato da cache locale {cache_path} ({len(local_cache)} profili).")
+            except Exception as e:
+                print(f"  ⚠️ Errore lettura cache locale: {e}")
+
+        # 2. Prova dallo storico CSV
+        if not fallback_done and os.path.exists(config.INJURIES_CSV):
+            try:
+                hist_df = pd.read_csv(config.INJURIES_CSV)
+                hist_map = hist_df.set_index("player").to_dict(orient="index")
+                for p, d in hist_map.items():
+                    cache[p] = {
+                        "giorni_infortunio_3y": d.get("giorni_infortunio_3y", 0),
+                        "n_infortuni_3y": d.get("n_infortuni_3y", 0),
+                        "infortunio_grave": d.get("infortunio_grave", 0),
+                        "tm_found": True,
+                        "dettaglio_infortuni": []
+                    }
+                fallback_done = True
+                print(f"  ✅ Fallback completato dallo storico CSV {config.INJURIES_CSV} ({len(hist_map)} calciatori).")
+            except Exception as e:
+                print(f"  ⚠️ Errore lettura storico CSV: {e}")
+
+        if not fallback_done:
+            print("  ⚠️ Nessun archivio locale disponibile. Procedo con malus neutro (0) senza interrompere la pipeline.")
 
     # Aggiorna DataFrame con dati infortuni
     giorni_list, n_inj_list, grave_list, malus_list = [], [], [], []

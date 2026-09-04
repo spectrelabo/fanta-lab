@@ -37,10 +37,26 @@ def prepare_training_data():
     season_order = sorted(df_raw["season"].unique())
     season_idx = {s: i for i, s in enumerate(season_order)}
     df_raw["s_idx"] = df_raw["season"].map(season_idx)
-    df_raw = df_raw.sort_values(["player_id", "s_idx"]).reset_index(drop=True)
+    # Check player_id nulls and apply deterministic composite fallback if missing
+    null_ratio = df_raw["player_id"].isna().mean() if "player_id" in df_raw.columns else 1.0
+    if null_ratio > 0.10 or "player_id" not in df_raw.columns:
+        print(f"  [WARNING] player_id mancante o nullo per il {null_ratio*100:.1f}% dei record. Attivazione fallback player_uid.")
+        name_col = "player_name" if "player_name" in df_raw.columns else "player"
+        role_col = "role" if "role" in df_raw.columns else "ruolo"
+        df_raw["group_key"] = (
+            df_raw[name_col].fillna("").astype(str).str.strip().str.lower() + "_" +
+            df_raw[role_col].fillna("").astype(str).str.strip().str.upper()
+        )
+    else:
+        df_raw["group_key"] = df_raw["player_id"].fillna(
+            df_raw["player_name"].fillna("").astype(str).str.strip().str.lower() + "_" +
+            df_raw["role"].fillna("").astype(str).str.strip().str.upper()
+        )
+
+    df_raw = df_raw.sort_values(["group_key", "s_idx"]).reset_index(drop=True)
 
     records = []
-    for pid, group in df_raw.groupby("player_id"):
+    for pkey, group in df_raw.groupby("group_key"):
         group = group.sort_values("s_idx")
         if len(group) < 2:
             continue
@@ -93,6 +109,12 @@ def prepare_training_data():
             })
 
     df_train = pd.DataFrame(records)
+    if len(df_train) <= 10:
+        raise RuntimeError(
+            f"Errore critico nello Stage 8: campioni di transizione storica insufficienti ({len(df_train)} <= 10). "
+            "Verifica l'integrità di data/storico_giocatori_raw.csv ed esegui nuovamente: python run_pipeline.py --from 1"
+        )
+
     print(f"  Generated {len(df_train)} lagged player-season transition samples (Zero Data Leakage).")
 
     feature_cols = [

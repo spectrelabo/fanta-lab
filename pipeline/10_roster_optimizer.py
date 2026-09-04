@@ -143,10 +143,10 @@ def main():
         display_optimized_roster(roster_500, budget=500, price_col="Prezzo_Consigliato_Cr")
 
     # 2. Optimize on Fair Value (Budget: 1,000)
-    print("\n[Strategy B] Optimal 25-Player Roster on Official Prices (Budget: 1,000 Credits):")
-    roster_1000 = optimize_roster(df, budget=1000, price_col="Prezzo_Consigliato_Cr")
+    print("\n[Strategy B] Optimal 25-Player Roster on Fair Value (Budget: 1,000 Credits):")
+    roster_1000 = optimize_roster(df, budget=1000, price_col="prezzo_fair_1000")
     if roster_1000 is not None:
-        display_optimized_roster(roster_1000, budget=1000, price_col="Prezzo_Consigliato_Cr")
+        display_optimized_roster(roster_1000, budget=1000, price_col="prezzo_fair_1000")
 
     print("  STAGE 10 COMPLETED.\n")
 

@@ -85,6 +85,16 @@ LEGENDA = [
 
 def generate_excel(df, output_path=None):
     output_path = output_path or config.OUTPUT_EXCEL
+
+    # Check key columns
+    key_cols = ["predicted_pts_p50", "vorp_points", "prezzo_fair_1000", "surplus_value_cr"]
+    missing_keys = [c for c in key_cols if c not in df.columns]
+    if missing_keys:
+        raise ValueError(
+            f"Errore generazione Excel: Colonne di Machine Learning / VORP mancanti nel dataset: {missing_keys}.\n"
+            "Per calcolare le proiezioni quantitative e i prezzi fair, esegui prima: python run_pipeline.py --from 8"
+        )
+
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
 
