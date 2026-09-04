@@ -224,6 +224,24 @@ def main():
     test("HTML contiene 'toggleTargetSlotCandidates'", "toggleTargetSlotCandidates" in html)
     test("HTML contiene 'clearAllTargetSlots'", "clearAllTargetSlots" in html)
 
+    # ── 14. Goalkeeper Slot Tactic & Blocco Alignment ────────────────
+    print("\n▸ 14. Configurazione Tattica Slot Portieri (Top vs Riserva Blocco)")
+    p_slots_trazione = presets.get("trazione_anteriore", {}).get("slots", {}).get("P", [])
+    test("Trazione Anteriore P slot 1 è Fascia 1 (Top)", len(p_slots_trazione) >= 2 and p_slots_trazione[0]["fascia"] == 1)
+    test("Trazione Anteriore P slot 2 è Fascia 4 (Riserva)", len(p_slots_trazione) >= 2 and p_slots_trazione[1]["fascia"] == 4)
+
+    p_slots_ferro = presets.get("modificatore_ferro", {}).get("slots", {}).get("P", [])
+    test("Modificatore di Ferro P slot 1 è Fascia 1 (Top Scudetto)", len(p_slots_ferro) >= 2 and p_slots_ferro[0]["fascia"] == 1)
+    test("Modificatore di Ferro P slot 2 è Fascia 4 (Riserva Blocco)", len(p_slots_ferro) >= 2 and p_slots_ferro[1]["fascia"] == 4)
+
+    p_slots_money = presets.get("moneyball_value", {}).get("slots", {}).get("P", [])
+    test("Moneyball Value P slot 1 è Fascia 2 (Titolare Solido)", len(p_slots_money) >= 2 and p_slots_money[0]["fascia"] == 2)
+    test("Moneyball Value P slot 2 è Fascia 2 (Alternanza)", len(p_slots_money) >= 2 and p_slots_money[1]["fascia"] == 2)
+
+    test("HTML contiene helper 'getSlotTacticConfig'", "getSlotTacticConfig" in html)
+    test("HTML contiene helper 'isReserveSlot'", "isReserveSlot" in html)
+    test("HTML contiene supporto '🛡️ Blocco'", "🛡️ Blocco" in html)
+
     # ── SUMMARY ───────────────────────────────────────────────────────
     print("\n" + "=" * 72)
     passed = sum(1 for _, s, _ in results if s == PASS)

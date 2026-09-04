@@ -213,9 +213,9 @@ TACTICAL_PRESETS = {
                 {"slot": 9, "name": "9° Slot: Chiusura", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
             ],
             "P": [
-                {"slot": 1, "name": "1° Portiere: Titolare (Top o Fascia Media)", "target_budget": "35-80 cr", "max_limit": 85, "fascia": 1},
-                {"slot": 2, "name": "2° Portiere: Alternanza o Riserva Blocco", "target_budget": "1-25 cr", "max_limit": 30, "fascia": 2},
-                {"slot": 3, "name": "3° Portiere: Terzo Portiere / Copertura", "target_budget": "1-3 cr", "max_limit": 5, "fascia": 3},
+                {"slot": 1, "name": "1° Portiere: Top Titolare", "target_budget": "40-70 cr", "max_limit": 75, "fascia": 1},
+                {"slot": 2, "name": "2° Portiere: Riserva Blocco", "target_budget": "1-5 cr", "max_limit": 10, "fascia": 4},
+                {"slot": 3, "name": "3° Portiere: Terzo Portiere", "target_budget": "1 cr", "max_limit": 3, "fascia": 4},
                 {"slot": 4, "name": "4° Portiere: Quarto Portiere", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
             ]
         }
@@ -261,8 +261,8 @@ TACTICAL_PRESETS = {
             ],
             "P": [
                 {"slot": 1, "name": "1° Portiere: Top Portiere Squadra Scudetto", "target_budget": "70-110 cr", "max_limit": 125, "fascia": 1},
-                {"slot": 2, "name": "2° Portiere: Alternanza o Riserva Blocco", "target_budget": "1-25 cr", "max_limit": 30, "fascia": 2},
-                {"slot": 3, "name": "3° Portiere: Terzo Portiere / Copertura", "target_budget": "1-3 cr", "max_limit": 5, "fascia": 3},
+                {"slot": 2, "name": "2° Portiere: Secondo Portiere (Riserva Blocco)", "target_budget": "1-10 cr", "max_limit": 15, "fascia": 4},
+                {"slot": 3, "name": "3° Portiere: Terzo Portiere (Chiusura Blocco)", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
                 {"slot": 4, "name": "4° Portiere: Quarto Portiere", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
             ]
         }
@@ -307,9 +307,9 @@ TACTICAL_PRESETS = {
                 {"slot": 9, "name": "9° Slot: Chiusura", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
             ],
             "P": [
-                {"slot": 1, "name": "1° Portiere: Titolare (Top o Fascia Media)", "target_budget": "35-80 cr", "max_limit": 85, "fascia": 1},
-                {"slot": 2, "name": "2° Portiere: Alternanza o Riserva Blocco", "target_budget": "1-25 cr", "max_limit": 30, "fascia": 2},
-                {"slot": 3, "name": "3° Portiere: Terzo Portiere / Copertura", "target_budget": "1-3 cr", "max_limit": 5, "fascia": 3},
+                {"slot": 1, "name": "1° Portiere: Top Titolare", "target_budget": "40-75 cr", "max_limit": 80, "fascia": 1},
+                {"slot": 2, "name": "2° Portiere: Riserva Blocco", "target_budget": "1-5 cr", "max_limit": 10, "fascia": 4},
+                {"slot": 3, "name": "3° Portiere: Terzo Portiere", "target_budget": "1 cr", "max_limit": 3, "fascia": 4},
                 {"slot": 4, "name": "4° Portiere: Quarto Portiere", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
             ]
         }
@@ -354,9 +354,9 @@ TACTICAL_PRESETS = {
                 {"slot": 9, "name": "9° Slot: Chiusura", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
             ],
             "P": [
-                {"slot": 1, "name": "1° Portiere: Titolare Solido / Value", "target_budget": "35-80 cr", "max_limit": 85, "fascia": 1},
-                {"slot": 2, "name": "2° Portiere: Alternanza o Riserva Blocco", "target_budget": "1-25 cr", "max_limit": 30, "fascia": 2},
-                {"slot": 3, "name": "3° Portiere: Terzo Portiere / Copertura", "target_budget": "1-3 cr", "max_limit": 5, "fascia": 3},
+                {"slot": 1, "name": "1° Portiere: Titolare Solido / Value", "target_budget": "30-55 cr", "max_limit": 60, "fascia": 2},
+                {"slot": 2, "name": "2° Portiere: Alternanza Titolare", "target_budget": "20-35 cr", "max_limit": 40, "fascia": 2},
+                {"slot": 3, "name": "3° Portiere: Riserva / Terzo", "target_budget": "1-3 cr", "max_limit": 5, "fascia": 4},
                 {"slot": 4, "name": "4° Portiere: Quarto Portiere", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
             ]
         }
@@ -401,9 +401,9 @@ TACTICAL_PRESETS = {
                 {"slot": 9, "name": "9° Slot: Chiusura", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
             ],
             "P": [
-                {"slot": 1, "name": "1° Portiere: Titolare Primario", "target_budget": "35-80 cr", "max_limit": 85, "fascia": 1},
-                {"slot": 2, "name": "2° Portiere: Alternanza o Riserva Blocco", "target_budget": "1-25 cr", "max_limit": 30, "fascia": 2},
-                {"slot": 3, "name": "3° Portiere: Terzo Portiere / Copertura", "target_budget": "1-3 cr", "max_limit": 5, "fascia": 3},
+                {"slot": 1, "name": "1° Portiere: Top Titolare", "target_budget": "35-80 cr", "max_limit": 85, "fascia": 1},
+                {"slot": 2, "name": "2° Portiere: Riserva Blocco", "target_budget": "1-10 cr", "max_limit": 15, "fascia": 4},
+                {"slot": 3, "name": "3° Portiere: Terzo Portiere", "target_budget": "1-3 cr", "max_limit": 5, "fascia": 4},
                 {"slot": 4, "name": "4° Portiere: Quarto Portiere", "target_budget": "1 cr", "max_limit": 2, "fascia": 4},
             ]
         }
@@ -5027,7 +5027,62 @@ HTML_TEMPLATE = """
         ───────────────────────────────────────────────────────────── */
         let expandedTargetSlot = null; // e.g. "P_0", "D_3"
         let targetCandidateSearch = '';
-        let targetCandidateFascia = 0; // 0 = all
+        let targetCandidateFascia = 0; // 0 = all, 1-4 = fascia, 'BLOCCO' = same club
+
+        // Tactical strategy & presets state shared between Targets and Strategy tabs
+        let tacticalPresets = {};
+        let currentTacticId = localStorage.getItem('fanta_tactic_profile_' + activeProfileId) || 'trazione_anteriore';
+        let slotExpandedMap = {}; // Tracks expanded state for free cluster navigation
+        let customModalRole = 'A';
+
+        function getCustomTacticStorageKey() {
+            return `fanta_custom_tactic_profile_${activeProfileId}`;
+        }
+
+        function getCustomTacticConfig() {
+            try {
+                const saved = localStorage.getItem(getCustomTacticStorageKey());
+                if (saved) return JSON.parse(saved);
+            } catch(e) {}
+            return (tacticalPresets && tacticalPresets['custom']) || null;
+        }
+
+        function saveCustomTacticConfig(cfg) {
+            localStorage.setItem(getCustomTacticStorageKey(), JSON.stringify(cfg));
+        }
+
+        function getActiveTactic() {
+            let tactic = (tacticalPresets && tacticalPresets[currentTacticId]) || (tacticalPresets && Object.values(tacticalPresets)[0]);
+            if (currentTacticId === 'custom') {
+                tactic = getCustomTacticConfig() || tactic;
+            }
+            return tactic;
+        }
+
+        function isReserveSlot(slotCfg) {
+            if (!slotCfg) return false;
+            if (slotCfg.fascia === 4) return true;
+            const name = (slotCfg.name || '').toLowerCase();
+            return name.includes('riserva') || name.includes('chiusura') || name.includes('terzo') || name.includes('quarto');
+        }
+
+        function getSlotTacticConfig(role, slotIdx) {
+            const tactic = getActiveTactic();
+            if (tactic && tactic.slots && tactic.slots[role] && tactic.slots[role][slotIdx]) {
+                return tactic.slots[role][slotIdx];
+            }
+            // Fallback defaults
+            if (role === 'P') {
+                if (slotIdx === 0) return { slot: 1, name: "1° Portiere: Top Titolare", fascia: 1, target_budget: "40-80 cr", max_limit: 85 };
+                if (slotIdx === 1) return { slot: 2, name: "2° Portiere: Riserva Blocco", fascia: 4, target_budget: "1-5 cr", max_limit: 10 };
+                if (slotIdx === 2) return { slot: 3, name: "3° Portiere: Terzo Portiere", fascia: 4, target_budget: "1 cr", max_limit: 3 };
+                return { slot: slotIdx + 1, name: `${slotIdx + 1}° Portiere: Quarto Portiere`, fascia: 4, target_budget: "1 cr", max_limit: 2 };
+            }
+            if (slotIdx < 2) return { slot: slotIdx + 1, name: `${slotIdx + 1}° Slot: Top`, fascia: 1 };
+            if (slotIdx < 4) return { slot: slotIdx + 1, name: `${slotIdx + 1}° Slot: Semitop`, fascia: 2 };
+            if (slotIdx < 6) return { slot: slotIdx + 1, name: `${slotIdx + 1}° Slot: Low-Cost`, fascia: 3 };
+            return { slot: slotIdx + 1, name: `${slotIdx + 1}° Slot: Scommessa / Chiusura`, fascia: 4 };
+        }
 
         function getTargetSlotsStorageKey() {
             return `fanta_target_slots_profile_${activeProfileId}`;
@@ -5067,7 +5122,21 @@ HTML_TEMPLATE = """
             } else {
                 expandedTargetSlot = slotKey;
                 targetCandidateSearch = '';
-                targetCandidateFascia = 0;
+                const [role, idxStr] = slotKey.split('_');
+                const slotIdx = parseInt(idxStr, 10);
+                const slotCfg = getSlotTacticConfig(role, slotIdx);
+
+                if (role === 'P') {
+                    if (slotIdx === 0) {
+                        targetCandidateFascia = slotCfg.fascia || 1;
+                    } else if (isReserveSlot(slotCfg)) {
+                        targetCandidateFascia = 4;
+                    } else {
+                        targetCandidateFascia = slotCfg.fascia || 2;
+                    }
+                } else {
+                    targetCandidateFascia = slotCfg.fascia || 1;
+                }
             }
             renderTargetsTab();
         }
@@ -5141,9 +5210,31 @@ HTML_TEMPLATE = """
         function renderCandidateItemsHtml(role, slotIdx) {
             const slots = loadTargetSlots();
             const assignedMap = auctionState.assigned_players || {};
+
+            let p1Team = null;
+            let p1Name = null;
+            if (role === 'P') {
+                p1Name = slots['P_0'];
+                if (p1Name) {
+                    const p1Obj = allPlayers.find(x => x.player === p1Name);
+                    if (p1Obj) p1Team = p1Obj.team;
+                }
+            }
+
             const candidates = allPlayers.filter(p => {
                 if (p.role !== role) return false;
-                if (targetCandidateFascia > 0 && p.fascia !== targetCandidateFascia) return false;
+
+                if (role === 'P' && targetCandidateFascia === 'BLOCCO') {
+                    if (!p1Team || p.team !== p1Team) return false;
+                    if (p.player === p1Name) return false;
+                } else if (targetCandidateFascia === 4) {
+                    if (p.fascia !== 4 && (p.is_starter_2627 === 1 || p.is_starter_2627 === true || p.is_starter_2627 === "1")) {
+                        return false;
+                    }
+                } else if (targetCandidateFascia > 0) {
+                    if (p.fascia !== targetCandidateFascia) return false;
+                }
+
                 if (targetCandidateSearch) {
                     const matchName = (p.player || '').toLowerCase().includes(targetCandidateSearch);
                     const matchTeam = (p.team || '').toLowerCase().includes(targetCandidateSearch);
@@ -5153,6 +5244,13 @@ HTML_TEMPLATE = """
             });
 
             candidates.sort((a, b) => {
+                // If picking goalkeeper slot > 0 and P1 exists, prioritize teammates of P1
+                if (role === 'P' && p1Team && slotIdx > 0) {
+                    const aIsBlock = (a.team === p1Team && a.player !== p1Name) ? 1 : 0;
+                    const bIsBlock = (b.team === p1Team && b.player !== p1Name) ? 1 : 0;
+                    if (bIsBlock !== aIsBlock) return bIsBlock - aIsBlock;
+                }
+
                 const fairA = a.price_fair_live || a.price_fair_scaled || a.price_fair_1000 || 1;
                 const fairB = b.price_fair_live || b.price_fair_scaled || b.price_fair_1000 || 1;
                 if (fairB !== fairA) return fairB - fairA;
@@ -5163,11 +5261,12 @@ HTML_TEMPLATE = """
                 return '<div style="text-align:center; padding:12px; color:var(--text-muted); font-size:0.8rem;">Nessun calciatore trovato con i criteri attuali.</div>';
             }
 
-            return candidates.slice(0, 30).map(p => {
+            return candidates.slice(0, 35).map(p => {
                 const fair = p.price_fair_live || p.price_fair_scaled || p.price_fair_1000 || 1;
                 const isAssigned = (p.player in assignedMap) || p.is_assigned;
                 const isSlotSelected = slots[`${role}_${slotIdx}`] === p.player;
                 const isStarter = p.is_starter_2627 === 1 || p.is_starter_2627 === true || p.is_starter_2627 === "1";
+                const isBloccoTeammate = (role === 'P' && p1Team && p.team === p1Team && p.player !== p1Name);
                 const medDays = (p.medical && p.medical.days_lost_3y) || 0;
                 const medBadge = medDays >= 120 
                     ? `<span class="medical-badge medical-badge-danger" onclick="event.stopPropagation(); openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')" title="Finestra Medica: ${medDays} gg infortunio">🔴 ${medDays}gg</span>`
@@ -5176,14 +5275,15 @@ HTML_TEMPLATE = """
                         : `<span class="medical-badge medical-badge-success" onclick="event.stopPropagation(); openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')" title="Finestra Medica: Integro">🟢 Integro</span>`);
 
                 return `
-                    <div class="candidate-player-row" style="${isAssigned ? 'opacity:0.45;' : ''}">
+                    <div class="candidate-player-row" style="${isAssigned ? 'opacity:0.45;' : ''} ${isBloccoTeammate ? 'background:rgba(217, 119, 6, 0.08); border-left:3px solid var(--gold);' : ''}">
                         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; min-width:0;">
                             <span class="badge badge-${p.role}">${p.role}</span>
                             <span class="tier-badge tier-${p.fascia}">F${p.fascia}</span>
                             <b style="cursor:pointer; font-size:0.95rem;" onclick="openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')">${p.player}</b>
                             <small style="color:var(--text-muted);">(${p.team})</small>
+                            ${isBloccoTeammate ? `<span class="badge" style="background:rgba(217, 119, 6, 0.25); color:var(--gold); border:1px solid rgba(217, 119, 6, 0.5); font-size:0.68rem; font-weight:800;">🛡️ Blocco ${p.team}</span>` : ''}
                             ${medBadge}
-                            ${isStarter ? `<span class="scout-tag-starter">✓ Titolare</span>` : ''}
+                            ${isStarter ? `<span class="scout-tag-starter">✓ Titolare</span>` : `<span style="font-size:0.7rem; color:var(--text-muted); font-style:italic;">Riserva</span>`}
                             ${isAssigned ? `<span style="color:var(--danger); font-size:0.72rem; font-weight:700;">[ASSEGNATO]</span>` : ''}
                         </div>
                         <div style="display:flex; align-items:center; gap:10px; flex-shrink:0;">
@@ -5317,17 +5417,32 @@ HTML_TEMPLATE = """
                     const playerName = slots[slotKey];
                     const isExpanded = expandedTargetSlot === slotKey;
 
-                    let fasciaHint = "Titolare / Regolare";
+                    const slotCfg = getSlotTacticConfig(role, i);
+                    const slotName = slotCfg.name || `Slot #${i + 1}`;
+                    const slotTargetBudget = slotCfg.target_budget ? ` • Target: ${slotCfg.target_budget}` : '';
+                    const fasciaHint = `${slotName}${slotTargetBudget}`;
+
+                    let pillsHtml = '';
                     if (role === 'P') {
-                        if (i === 0) fasciaHint = "1ª Fascia — Top Starter";
-                        else if (i === 1) fasciaHint = "2ª Fascia — Alternanza / Semitop";
-                        else if (i === 2) fasciaHint = "3ª Fascia — Low-Cost / Terzo";
-                        else fasciaHint = "4ª Fascia — Riserva a 1 cr";
+                        const p1Name = slots['P_0'];
+                        const p1Obj = p1Name ? allPlayers.find(x => x.player === p1Name) : null;
+                        const p1Team = p1Obj ? p1Obj.team : null;
+                        pillsHtml = `
+                            <div class="pill ${targetCandidateFascia === 0 ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem;" onclick="setTargetCandidateFascia(0)">Tutte</div>
+                            <div class="pill ${targetCandidateFascia === 1 ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem;" onclick="setTargetCandidateFascia(1)">F1 Top</div>
+                            <div class="pill ${targetCandidateFascia === 2 ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem;" onclick="setTargetCandidateFascia(2)">F2 Alternanza</div>
+                            <div class="pill ${targetCandidateFascia === 3 ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem;" onclick="setTargetCandidateFascia(3)">F3 Low-Cost</div>
+                            <div class="pill ${targetCandidateFascia === 4 ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem;" onclick="setTargetCandidateFascia(4)">F4 Riserve</div>
+                            ${(p1Team && i > 0) ? `<div class="pill ${targetCandidateFascia === 'BLOCCO' ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem; border:1px solid var(--gold); color:var(--gold);" onclick="setTargetCandidateFascia('BLOCCO')">🛡️ Solo Blocco ${p1Team}</div>` : ''}
+                        `;
                     } else {
-                        if (i < 2) fasciaHint = "1ª Fascia — Top";
-                        else if (i < 4) fasciaHint = "2ª Fascia — Semitop / Titolare";
-                        else if (i < 6) fasciaHint = "3ª Fascia — Low-Cost";
-                        else fasciaHint = "4ª Fascia — Scommessa / 1 cr";
+                        pillsHtml = `
+                            <div class="pill ${targetCandidateFascia === 0 ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem;" onclick="setTargetCandidateFascia(0)">Tutte</div>
+                            <div class="pill ${targetCandidateFascia === 1 ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem;" onclick="setTargetCandidateFascia(1)">F1 Top</div>
+                            <div class="pill ${targetCandidateFascia === 2 ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem;" onclick="setTargetCandidateFascia(2)">F2 Semitop</div>
+                            <div class="pill ${targetCandidateFascia === 3 ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem;" onclick="setTargetCandidateFascia(3)">F3 Low-Cost</div>
+                            <div class="pill ${targetCandidateFascia === 4 ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem;" onclick="setTargetCandidateFascia(4)">F4 Scommesse</div>
+                        `;
                     }
 
                     if (playerName) {
@@ -5358,7 +5473,7 @@ HTML_TEMPLATE = """
                                         <b style="font-size:1.05rem; cursor:pointer;" onclick="openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')">${p.player}</b>
                                         <small style="color:var(--text-muted); font-weight:600;">(${p.team})</small>
                                         ${medBadge}
-                                        ${isStarter ? `<span class="scout-tag-starter">✓ Titolare</span>` : ''}
+                                        ${isStarter ? `<span class="scout-tag-starter">✓ Titolare</span>` : `<span style="font-size:0.7rem; color:var(--text-muted); font-style:italic;">Riserva</span>`}
                                         ${statusBadge}
                                     </div>
                                     <div style="display:flex; align-items:center; gap:12px;">
@@ -5377,13 +5492,9 @@ HTML_TEMPLATE = """
                                 ${isExpanded ? `
                                     <div class="target-slot-candidates">
                                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px; flex-wrap:wrap;">
-                                            <div style="font-size:0.78rem; font-weight:700; color:var(--primary);">Sostituisci Slot #${i + 1} (${meta.name}):</div>
+                                            <div style="font-size:0.78rem; font-weight:700; color:var(--primary);">Scegli per ${slotName} (${meta.name}):</div>
                                             <div class="pills" style="margin:0; gap:4px;">
-                                                <div class="pill ${targetCandidateFascia === 0 ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem;" onclick="setTargetCandidateFascia(0)">Tutte</div>
-                                                <div class="pill ${targetCandidateFascia === 1 ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem;" onclick="setTargetCandidateFascia(1)">F1</div>
-                                                <div class="pill ${targetCandidateFascia === 2 ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem;" onclick="setTargetCandidateFascia(2)">F2</div>
-                                                <div class="pill ${targetCandidateFascia === 3 ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem;" onclick="setTargetCandidateFascia(3)">F3</div>
-                                                <div class="pill ${targetCandidateFascia === 4 ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem;" onclick="setTargetCandidateFascia(4)">F4</div>
+                                                ${pillsHtml}
                                             </div>
                                         </div>
                                         <input type="text" class="search-input" style="padding:6px 10px; font-size:0.82rem; margin-bottom:8px;" placeholder="Cerca calciatore per nome o squadra..." oninput="filterTargetCandidates('${slotKey}', this.value)">
@@ -5410,13 +5521,9 @@ HTML_TEMPLATE = """
                                 ${isExpanded ? `
                                     <div class="target-slot-candidates">
                                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px; flex-wrap:wrap;">
-                                            <div style="font-size:0.78rem; font-weight:700; color:var(--primary);">Calciatori disponibili per Slot #${i + 1} (${meta.name}):</div>
+                                            <div style="font-size:0.78rem; font-weight:700; color:var(--primary);">Calciatori disponibili per ${slotName} (${meta.name}):</div>
                                             <div class="pills" style="margin:0; gap:4px;">
-                                                <div class="pill ${targetCandidateFascia === 0 ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem;" onclick="setTargetCandidateFascia(0)">Tutte</div>
-                                                <div class="pill ${targetCandidateFascia === 1 ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem;" onclick="setTargetCandidateFascia(1)">F1</div>
-                                                <div class="pill ${targetCandidateFascia === 2 ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem;" onclick="setTargetCandidateFascia(2)">F2</div>
-                                                <div class="pill ${targetCandidateFascia === 3 ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem;" onclick="setTargetCandidateFascia(3)">F3</div>
-                                                <div class="pill ${targetCandidateFascia === 4 ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem;" onclick="setTargetCandidateFascia(4)">F4</div>
+                                                ${pillsHtml}
                                             </div>
                                         </div>
                                         <input type="text" class="search-input" style="padding:6px 10px; font-size:0.82rem; margin-bottom:8px;" placeholder="Cerca calciatore per nome o squadra..." oninput="filterTargetCandidates('${slotKey}', this.value)">
@@ -5465,26 +5572,6 @@ HTML_TEMPLATE = """
         /* ─────────────────────────────────────────────────────────────
            STRATEGY & SLOT DISCIPLINE PLANNER (CUSTOMIZABLE BLUEPRINTS)
         ───────────────────────────────────────────────────────────── */
-        let tacticalPresets = {};
-        let currentTacticId = localStorage.getItem('fanta_tactic_profile_' + activeProfileId) || 'trazione_anteriore';
-        let slotExpandedMap = {}; // Tracks expanded state for free cluster navigation
-        let customModalRole = 'A';
-
-        function getCustomTacticStorageKey() {
-            return `fanta_custom_tactic_profile_${activeProfileId}`;
-        }
-
-        function getCustomTacticConfig() {
-            try {
-                const saved = localStorage.getItem(getCustomTacticStorageKey());
-                if (saved) return JSON.parse(saved);
-            } catch(e) {}
-            return tacticalPresets['custom'] || null;
-        }
-
-        function saveCustomTacticConfig(cfg) {
-            localStorage.setItem(getCustomTacticStorageKey(), JSON.stringify(cfg));
-        }
 
         function renderTacticPills() {
             const container = document.getElementById('tacticPresetPills');
@@ -5582,12 +5669,12 @@ HTML_TEMPLATE = """
                             <input type="number" id="customSlotMax_${role}_${idx}" value="${s.max_limit || 2}" min="1" max="600" style="margin-bottom:0; padding:4px 6px; font-size:0.75rem;">
                         </div>
                         <div>
-                            <label style="color:var(--text-muted); display:block; font-size:0.65rem;">Fascia Minima</label>
+                            <label style="color:var(--text-muted); display:block; font-size:0.65rem;">Fascia / Profilo</label>
                             <select id="customSlotFascia_${role}_${idx}" style="margin-bottom:0; padding:4px 6px; font-size:0.75rem;">
-                                <option value="1" ${s.fascia === 1 ? 'selected' : ''}>1ª Fascia</option>
-                                <option value="2" ${s.fascia === 2 ? 'selected' : ''}>2ª Fascia</option>
-                                <option value="3" ${s.fascia === 3 ? 'selected' : ''}>3ª Fascia</option>
-                                <option value="4" ${s.fascia === 4 ? 'selected' : ''}>4ª Fascia</option>
+                                <option value="1" ${s.fascia === 1 ? 'selected' : ''}>${role === 'P' ? '1ª Fascia — Top Titolare' : '1ª Fascia — Top'}</option>
+                                <option value="2" ${s.fascia === 2 ? 'selected' : ''}>${role === 'P' ? '2ª Fascia — Semitop / Alternanza' : '2ª Fascia — Semitop'}</option>
+                                <option value="3" ${s.fascia === 3 ? 'selected' : ''}>${role === 'P' ? '3ª Fascia — Low-Cost Titolare' : '3ª Fascia — Low-Cost'}</option>
+                                <option value="4" ${s.fascia === 4 ? 'selected' : ''}>${role === 'P' ? '4ª Fascia — Riserva Blocco (1 cr)' : '4ª Fascia — Scommessa (1 cr)'}</option>
                             </select>
                         </div>
                     </div>
@@ -5714,22 +5801,32 @@ HTML_TEMPLATE = """
                 const candidates = availableRole.filter(p => {
                     const fair = p.price_fair_live || p.price_fair_scaled || p.price_fair_1000;
                     if (role === 'P') {
-                        if (slotCfg.slot === 1) {
-                            // 1° Portiere: Titolari (Top ed Intermedi), prezzo fair >= 10 su 1000 (scalato) o titolare certificato
-                            return fair >= Math.max(2, Math.round(10 * scaleRatio)) || (p.is_starter_2627 && fair >= Math.max(1, Math.round(6 * scaleRatio)));
-                        } else if (slotCfg.slot === 2) {
-                            // 2° Portiere: Alternanza (intermedi 10-35 cr) o Riserva Blocco
-                            return fair <= Math.max(3, Math.round(scaledMax * 1.3));
+                        if (slotCfg.fascia === 1) {
+                            return p.fascia === 1;
+                        } else if (slotCfg.fascia === 2) {
+                            return p.fascia === 2;
+                        } else if (slotCfg.fascia === 3) {
+                            return p.fascia === 3;
                         } else {
-                            // 3° e 4° Portiere: Riserve a basso costo / 1 cr
-                            return fair <= Math.max(2, Math.round(scaledMax * 1.5));
+                            return p.fascia === 4 || !p.is_starter_2627;
                         }
+                    }
+                    if (slotCfg.fascia && slotCfg.fascia <= 4) {
+                        return p.fascia === slotCfg.fascia;
                     }
                     if (slotCfg.slot === 1) return fair >= Math.max(2, Math.round(scaledMax * 0.40));
                     if (slotCfg.slot === 2) return fair <= Math.round(scaledMax * 1.35) && fair >= Math.max(2, Math.round(15 * scaleRatio));
                     if (slotCfg.slot === 3) return fair <= Math.round(scaledMax * 1.4) && fair >= Math.max(1, Math.round(8 * scaleRatio));
                     return fair <= scaledMax * 2;
                 }).sort((a,b) => {
+                    // Prioritize teammates if acquiring goalkeepers for existing club block
+                    if (role === 'P' && myRosterRole.length > 0) {
+                        const myGoalkeeper = myRosterRole[0];
+                        const aSameTeam = a.team === myGoalkeeper.team ? 1 : 0;
+                        const bSameTeam = b.team === myGoalkeeper.team ? 1 : 0;
+                        if (bSameTeam !== aSameTeam) return bSameTeam - aSameTeam;
+                    }
+
                     const aTarget = a.player in userTargets ? 1 : 0;
                     const bTarget = b.player in userTargets ? 1 : 0;
                     if (aTarget !== bTarget) return bTarget - aTarget;
