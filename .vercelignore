@@ -1,0 +1,13 @@
+.git
+.github
+tests/
+pipeline/
+docs/
+examples/
+data/raw/
+data/backup/
+data/historical/
+data/intermediate/
+*.log
+*.pyc
+__pycache__/
