@@ -1041,15 +1041,15 @@ def api_players():
         if days_lost < 15 and not severe_inj:
             med_status = "safe"
             med_label = "Affidabile"
-            med_badge = "🟢"
+            med_badge = '<i class="fa-solid fa-circle-check" style="color:#10b981;"></i>'
         elif days_lost <= 60 and not severe_inj:
             med_status = "warning"
             med_label = "Da Monitorare"
-            med_badge = "🟡"
+            med_badge = '<i class="fa-solid fa-triangle-exclamation" style="color:#f59e0b;"></i>'
         else:
             med_status = "danger"
             med_label = "Fragile / Alto Rischio"
-            med_badge = "🔴"
+            med_badge = '<i class="fa-solid fa-circle-exclamation" style="color:#ef4444;"></i>'
 
         # Understat Offensive Metrics
         xg_p90 = round(float(row.get("xg_per90", 0)), 3) if pd.notna(row.get("xg_per90")) else 0.0
@@ -1147,7 +1147,7 @@ def api_players():
                 "ceiling_p90": p90,
                 "spread": spread,
                 "profile_label": "Regolarista da Modificatore" if spread < 135 else "Boom-or-Bust / Alta Volatilità",
-                "profile_badge": "🛡️ Regolarista" if spread < 135 else "⚡ Boom-or-Bust"
+                "profile_badge": '<i class="fa-solid fa-shield" style="margin-right:4px;"></i> Regolarista' if spread < 135 else '<i class="fa-solid fa-bolt icon-pulse" style="margin-right:4px;"></i> Boom-or-Bust'
             }
         })
 
@@ -1760,6 +1760,7 @@ HTML_TEMPLATE = """
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
         :root {
             --bg: #030408;
@@ -1783,6 +1784,78 @@ HTML_TEMPLATE = """
             --role-d: #10b981;
             --role-c: #38bdf8;
             --role-a: #ff2d75;
+        }
+
+        /* ══════════════════════════════════════════════════════════════════
+           ANIMATED ICONS & MICRO-INTERACTIONS
+        ══════════════════════════════════════════════════════════════════ */
+        @keyframes icon-pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.18); filter: drop-shadow(0 0 8px rgba(255,45,117,0.7)); }
+        }
+        @keyframes icon-float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-3px); }
+        }
+        @keyframes icon-spin-slow {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        @keyframes radar-pulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(56, 189, 248, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); }
+        }
+        .icon-pulse { animation: icon-pulse 2s infinite ease-in-out; }
+        .icon-float { animation: icon-float 3s infinite ease-in-out; }
+        .icon-spin-hover:hover { animation: icon-spin-slow 1.2s linear infinite; }
+        .radar-live { animation: radar-pulse 2s infinite cubic-bezier(0, 0, 0.2, 1); }
+
+        .nav-item i {
+            font-size: 1.22rem;
+            margin-bottom: 2px;
+            transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .nav-item:active i {
+            transform: scale(0.85);
+        }
+        .nav-item.active i {
+            transform: translateY(-2px) scale(1.18);
+            filter: drop-shadow(0 0 8px rgba(255, 45, 117, 0.8));
+            color: var(--primary) !important;
+        }
+
+        /* Subview Segmented Controller (Inside Targets Tab) */
+        .target-subview-toggle-bar {
+            display: flex;
+            background: #080d1a;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 4px;
+            gap: 4px;
+            margin-bottom: 14px;
+        }
+        .target-subview-btn {
+            flex: 1;
+            padding: 9px 12px;
+            border-radius: 8px;
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            font-size: 0.84rem;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.2s ease;
+        }
+        .target-subview-btn.active {
+            background: linear-gradient(135deg, rgba(255, 45, 117, 0.22), rgba(168, 85, 247, 0.22));
+            color: #fff;
+            border: 1px solid var(--primary);
+            box-shadow: 0 2px 10px rgba(255, 45, 117, 0.25);
         }
 
         html {
@@ -2864,22 +2937,22 @@ HTML_TEMPLATE = """
         }
 
         @media (max-width: 899px) {
-            /* Smooth Airy Bottom Navigation */
+            /* Smooth Airy Bottom Navigation (5 Tabs) */
             nav.bottom-nav {
                 display: flex !important;
                 position: fixed;
                 bottom: 0;
                 left: 0;
                 right: 0;
-                height: 58px;
-                background: rgba(4, 6, 12, 0.94) !important;
+                height: 60px;
+                background: rgba(4, 6, 12, 0.96) !important;
                 backdrop-filter: blur(20px) !important;
                 -webkit-backdrop-filter: blur(20px) !important;
-                border-top: 1px solid rgba(255, 45, 117, 0.22) !important;
-                box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.7) !important;
+                border-top: 1px solid rgba(255, 45, 117, 0.25) !important;
+                box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.75) !important;
                 z-index: 1000;
-                padding-bottom: max(4px, env(safe-area-inset-bottom, 6px)) !important;
-                padding-top: 3px !important;
+                padding-bottom: max(6px, env(safe-area-inset-bottom, 8px)) !important;
+                padding-top: 4px !important;
             }
             .nav-item {
                 flex: 1;
@@ -2888,37 +2961,39 @@ HTML_TEMPLATE = """
                 justify-content: center;
                 align-items: center;
                 color: #94a3b8;
-                font-size: 0.68rem !important;
-                font-weight: 600;
+                font-size: 0.76rem !important;
+                font-weight: 700;
                 cursor: pointer;
                 border: none;
                 background: transparent;
                 gap: 2px !important;
-                padding: 4px 1px !important;
-                border-radius: 8px;
+                padding: 4px 2px !important;
+                border-radius: 10px;
                 touch-action: manipulation;
                 -webkit-tap-highlight-color: transparent;
-                transition: all 0.15s ease;
+                transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+            }
+            .nav-item i {
+                font-size: 1.25rem !important;
+                margin-bottom: 2px;
+                transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
             }
             .nav-item:active {
-                transform: scale(0.92);
+                transform: scale(0.90);
             }
             .nav-item.active {
                 color: #ff2d75 !important;
                 font-weight: 800 !important;
-                background: rgba(255, 45, 117, 0.09) !important;
+                background: rgba(255, 45, 117, 0.12) !important;
             }
-            .nav-item.active .nav-svg {
-                stroke: #ff2d75 !important;
-                filter: drop-shadow(0 0 6px rgba(255, 45, 117, 0.75)) !important;
-            }
-            .nav-svg {
-                width: 19px !important;
-                height: 19px !important;
+            .nav-item.active i {
+                color: var(--primary) !important;
+                filter: drop-shadow(0 0 8px rgba(255, 45, 117, 0.8)) !important;
+                transform: translateY(-2px) scale(1.15);
             }
 
             body {
-                padding-bottom: calc(68px + env(safe-area-inset-bottom, 12px)) !important;
+                padding-bottom: calc(70px + env(safe-area-inset-bottom, 12px)) !important;
             }
             .container {
                 padding: 10px 8px !important;
@@ -2938,17 +3013,32 @@ HTML_TEMPLATE = """
                 font-size: 0.88rem !important;
             }
 
-            /* Compact Ergonomic Pills */
+            /* Native-feel Smooth Horizontal Pills */
             .pills {
-                gap: 6px !important;
-                margin-bottom: 10px !important;
-                padding-bottom: 4px !important;
+                display: flex !important;
+                flex-wrap: nowrap !important;
+                overflow-x: auto !important;
+                -webkit-overflow-scrolling: touch !important;
+                scrollbar-width: none !important;
+                gap: 8px !important;
+                margin-bottom: 12px !important;
+                padding: 2px 2px 6px 2px !important;
+            }
+            .pills::-webkit-scrollbar {
+                display: none !important;
             }
             .pill {
-                padding: 6px 12px !important;
-                font-size: 0.78rem !important;
+                flex-shrink: 0 !important;
+                white-space: nowrap !important;
+                padding: 7px 13px !important;
+                font-size: 0.80rem !important;
                 font-weight: 700 !important;
-                border-radius: 18px !important;
+                border-radius: 20px !important;
+                min-height: 38px !important;
+                display: inline-flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                gap: 6px !important;
             }
 
             /* Lightweight Player Rows */
@@ -3065,29 +3155,44 @@ HTML_TEMPLATE = """
             <div class="sidebar-nav">
                 <!-- Asta FantaLab Live Tab (Always Visible) -->
                 <button class="sidebar-nav-btn" id="sideNav-draft" onclick="switchTab('draft')">
-                    <svg class="nav-svg" style="color:var(--primary);" viewBox="0 0 24 24"><path d="m14 7 3 3m-9.5 7.5 7-7m-5-5 3.5-3.5a2.121 2.121 0 0 1 3 3L12.5 5.5m-5 5L2 16l6 6 5.5-5.5"></path></svg>
-                    <span style="font-weight:700; color:var(--primary);">⚡ Asta FantaLab Live</span>
+                    <i class="fa-solid fa-bolt icon-pulse" style="color:var(--primary); width:20px; font-size:1.1rem;"></i>
+                    <span style="font-weight:700; color:var(--primary);">Asta Live</span>
                 </button>
 
                 <button class="sidebar-nav-btn active" id="sideNav-targets" onclick="switchTab('targets')">
-                    <svg class="nav-svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>
+                    <i class="fa-solid fa-bullseye" style="color:var(--gold); width:20px; font-size:1.1rem;"></i>
                     <span>I Miei Target</span>
                 </button>
-                <button class="sidebar-nav-btn" id="sideNav-ai" onclick="switchTab('ai')">
-                    <svg class="nav-svg" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-                    <span>Chiedi a {{ bot_name }}</span>
-                </button>
                 <button class="sidebar-nav-btn" id="sideNav-strategy" onclick="switchTab('strategy')">
-                    <svg class="nav-svg" viewBox="0 0 24 24"><path d="M3 3v18h18"></path><path d="m19 9-5 5-4-4-3 3"></path></svg>
-                    <span>Scala Slot</span>
+                    <i class="fa-solid fa-chart-pie" style="color:var(--primary); width:20px; font-size:1.1rem;"></i>
+                    <span>Scala Slot & Piano</span>
                 </button>
                 <button class="sidebar-nav-btn" id="sideNav-rosters" onclick="switchTab('rosters')">
-                    <svg class="nav-svg" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                    <i class="fa-solid fa-users" style="color:#38bdf8; width:20px; font-size:1.1rem;"></i>
                     <span>Rose & Finanze</span>
                 </button>
                 <button class="sidebar-nav-btn" id="sideNav-listone" onclick="switchTab('listone')">
-                    <svg class="nav-svg" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+                    <i class="fa-solid fa-table-list" style="color:#10b981; width:20px; font-size:1.1rem;"></i>
                     <span>Listone Analytics</span>
+                </button>
+                <button class="sidebar-nav-btn" id="sideNav-ai" onclick="switchTab('ai')">
+                    <i class="fa-solid fa-robot icon-float" style="color:#a855f7; width:20px; font-size:1.1rem;"></i>
+                    <span>Chiedi a {{ bot_name }}</span>
+                </button>
+
+                <div style="height:1px; background:var(--border); margin:6px 0;"></div>
+                <div style="font-size:0.65rem; font-weight:800; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; padding-left:8px; margin-bottom:2px;">STRUMENTI & LEGA</div>
+                <button class="sidebar-nav-btn" onclick="openLeagueSettingsModal(); toggleMobileSidebar();">
+                    <i class="fa-solid fa-gear" style="color:var(--text-muted); width:20px; font-size:1rem;"></i>
+                    <span>Impostazioni Lega</span>
+                </button>
+                <button class="sidebar-nav-btn" onclick="openAdminModal(); toggleMobileSidebar();">
+                    <i class="fa-solid fa-user-shield" style="color:var(--text-muted); width:20px; font-size:1rem;"></i>
+                    <span>Pannello Battitore</span>
+                </button>
+                <button class="sidebar-nav-btn" id="sideNavResetSession" onclick="openResetSessionModal(); toggleMobileSidebar();" style="display:none; color:#fca5a5;">
+                    <i class="fa-solid fa-triangle-exclamation icon-pulse" style="color:#ef4444; width:20px; font-size:1rem;"></i>
+                    <span>Nuova Sessione</span>
                 </button>
             </div>
 
@@ -3102,7 +3207,8 @@ HTML_TEMPLATE = """
 
             <div style="margin-top:auto; padding:12px 10px; text-align:center;">
                 <a href="https://buymeacoffee.com/blueskies360" target="_blank" rel="noopener noreferrer" style="display:inline-flex; align-items:center; justify-content:center; gap:6px; background:#fbbf24; color:#090d16; font-size:0.75rem; font-weight:800; padding:6px 14px; border-radius:20px; text-decoration:none; box-shadow:0 2px 8px rgba(251,191,36,0.3); width:100%;">
-                    <span>☕ Offri un Caffè</span>
+                    <i class="fa-solid fa-mug-hot"></i>
+                    <span>Offri un Caffè</span>
                 </a>
             </div>
         </aside>
@@ -3112,8 +3218,8 @@ HTML_TEMPLATE = """
 
             <header>
                 <div class="brand">
-                    <button class="profile-btn mobile-sidebar-toggle" onclick="toggleMobileSidebar()" style="padding:4px 8px; margin-right:4px;">
-                        <svg class="nav-svg" style="width:18px; height:18px;" viewBox="0 0 24 24"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+                    <button class="profile-btn mobile-sidebar-toggle" onclick="toggleMobileSidebar()" style="padding:6px 10px; margin-right:2px;" aria-label="Menu">
+                        <i class="fa-solid fa-bars" style="font-size:1.15rem; color:var(--text-main);"></i>
                     </button>
                     <div class="header-bot-pill" onclick="toggleMobileSidebar()" title="Menu Tattico">
                         {% if bot_avatar_image %}
@@ -3128,12 +3234,12 @@ HTML_TEMPLATE = """
                     </div>
 
                     <div class="desktop-brand-title" style="display:none; align-items:center; gap:8px;">
-                        <span style="font-family:'Outfit',sans-serif; font-weight:800; font-size:1.15rem; color:var(--text-main); letter-spacing:-0.3px;">⚡ {{ bot_name }}</span>
+                        <span style="font-family:'Outfit',sans-serif; font-weight:800; font-size:1.15rem; color:var(--text-main); letter-spacing:-0.3px;"><i class="fa-solid fa-bolt icon-pulse" style="color:var(--primary); margin-right:4px;"></i>{{ bot_name }}</span>
                         <span class="brand-tag" style="font-size:0.7rem; padding:2px 7px; background:rgba(255,45,117,0.15); border:1px solid rgba(255,45,117,0.35); color:var(--primary); font-weight:800; border-radius:4px;">{{ bot_badge }}</span>
                     </div>
 
-                    <!-- Dynamic League Config Badge -->
-                    <div id="headerLeagueBadge" class="market-pill" onclick="openLeagueSettingsModal()" title="Configurazione Lega (Clicca per modificare)" style="cursor:pointer; background:rgba(56,189,248,0.1); border:1px solid rgba(56,189,248,0.3);">
+                    <!-- Dynamic League Config Badge (Desktop only) -->
+                    <div id="headerLeagueBadge" class="market-pill hide-mobile" onclick="openLeagueSettingsModal()" title="Configurazione Lega (Clicca per modificare)" style="cursor:pointer; background:rgba(56,189,248,0.1); border:1px solid rgba(56,189,248,0.3);">
                         <span class="status-dot dot-green"></span>
                         <span id="headerLeagueBadgeText" style="color:var(--primary); font-weight:800;">Lega</span>
                     </div>
@@ -3141,33 +3247,33 @@ HTML_TEMPLATE = """
                     <!-- Dynamic Market Inflation Badge -->
                     <div id="headerMarketBadge" class="market-pill" onclick="showInflationInfoModal()" title="Clicca per i dettagli dell'inflazione">
                         <span id="marketBadgeDot" class="status-dot dot-blue"></span>
-                        <span id="marketBadgeText">Mercato 1.00x</span>
+                        <span id="marketBadgeText"><i class="fa-solid fa-chart-line" style="margin-right:3px;"></i>1.00x</span>
                     </div>
                 </div>
 
                 <div class="header-actions">
-                    <button id="btnHeaderLiveSniffer" class="profile-btn" onclick="switchTab('draft')" style="border:1px solid var(--primary); background:rgba(255,45,117,0.12); color:var(--primary); font-weight:700;" title="Asta FantaLab Live">
-                        <span>⚡</span>
-                        <span class="hide-mobile">Asta FantaLab</span>
+                    <button id="btnHeaderLiveSniffer" class="profile-btn hide-mobile" onclick="switchTab('draft')" style="border:1px solid var(--primary); background:rgba(255,45,117,0.12); color:var(--primary); font-weight:700;" title="Asta FantaLab Live">
+                        <i class="fa-solid fa-bolt icon-pulse"></i>
+                        <span>Asta Live</span>
                     </button>
 
-                    <button id="btnLeagueSettings" class="profile-btn" onclick="openLeagueSettingsModal()" title="Configura Budget, Slot e Squadre">
-                        <span style="font-size:0.9rem;">⚙️</span>
-                        <span class="hide-mobile">Lega</span>
+                    <button id="btnLeagueSettings" class="profile-btn hide-mobile" onclick="openLeagueSettingsModal()" title="Configura Budget, Slot e Squadre">
+                        <i class="fa-solid fa-gear"></i>
+                        <span>Lega</span>
                     </button>
 
-                    <button id="btnAdminResetSession" class="profile-btn" onclick="openResetSessionModal()" style="display:none; border:1px solid #ef4444; background:rgba(239,68,68,0.15); color:#fca5a5; font-weight:700;" title="Azzera asta e avvia nuova sessione condivisa">
-                        <span>⚠️</span>
-                        <span class="hide-mobile">Nuova Sessione</span>
+                    <button id="btnAdminResetSession" class="profile-btn hide-mobile" onclick="openResetSessionModal()" style="display:none; border:1px solid #ef4444; background:rgba(239,68,68,0.15); color:#fca5a5; font-weight:700;" title="Azzera asta e avvia nuova sessione condivisa">
+                        <i class="fa-solid fa-triangle-exclamation icon-pulse"></i>
+                        <span>Nuova Sessione</span>
                     </button>
 
-                    <button id="adminUnlockBtn" class="admin-badge-btn" onclick="openAdminModal()">
-                        <svg class="nav-svg" style="width:13px; height:13px;" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                    <button id="adminUnlockBtn" class="admin-badge-btn hide-mobile" onclick="openAdminModal()">
+                        <i class="fa-solid fa-user-shield"></i>
                         <span id="adminBtnText">Battitore</span>
                     </button>
 
                     <button class="profile-btn" onclick="openProfileModal()" title="Gestione Profilo / Cambia Fantasquadra">
-                        <svg class="nav-svg" style="width:14px; height:14px;" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                        <i class="fa-solid fa-circle-user" style="font-size:1.15rem; color:var(--primary);"></i>
                         <span id="headerProfileName">Io</span>
                         <span id="headerUserRoleBadge" style="font-size:0.62rem; padding:1px 5px; border-radius:3px; background:rgba(56,189,248,0.2); color:var(--primary); font-weight:800; margin-left:4px;">LIVE</span>
                     </button>
@@ -3183,7 +3289,7 @@ HTML_TEMPLATE = """
             <div class="card" style="border-left: 4px solid var(--primary); background: radial-gradient(circle at top right, rgba(56,189,248,0.06), transparent 70%), #0b111e; margin-bottom:14px;">
                 <div class="card-header" style="margin-bottom:8px;">
                     <div style="display:flex; align-items:center; gap:8px;">
-                        <span style="font-size:1.1rem;">⚡</span>
+                        <i class="fa-solid fa-satellite-dish icon-pulse" style="color:var(--primary); font-size:1.25rem;"></i>
                         <div>
                             <div class="card-title" style="margin-bottom:0; display:flex; align-items:center; gap:6px;">
                                 FantaLab Live Sniffer 
@@ -3194,7 +3300,7 @@ HTML_TEMPLATE = """
                     </div>
                     <div style="display:flex; align-items:center; gap:8px;">
                         <span id="flLiveStatusText" style="font-size:0.75rem; font-weight:800; color:var(--text-muted);">DISATTIVO</span>
-                        <button id="flToggleBtn" class="btn btn-secondary" style="width:auto; padding:4px 12px; font-size:0.75rem; font-weight:800;" onclick="toggleFantaLabLiveSniffer()">▶ Avvia Ascolto</button>
+                        <button id="flToggleBtn" class="btn btn-secondary" style="width:auto; padding:4px 12px; font-size:0.75rem; font-weight:800;" onclick="toggleFantaLabLiveSniffer()"><i class="fa-solid fa-play" style="margin-right:4px;"></i> Avvia Ascolto</button>
                     </div>
                 </div>
 
@@ -3235,7 +3341,7 @@ HTML_TEMPLATE = """
                 <div id="flLiveMonitorBox" style="display:none; background:#040711; border:1px solid var(--border); border-radius:8px; padding:12px; margin-top:8px;">
                     <!-- Idle State -->
                     <div id="flLiveIdleView" style="text-align:center; padding:12px 6px;">
-                        <div style="font-size:1.1rem; margin-bottom:4px;">📡</div>
+                        <div style="margin-bottom:6px;"><i class="fa-solid fa-tower-broadcast radar-live" style="color:var(--primary); font-size:1.6rem;"></i></div>
                         <b id="flLiveIdleTitle" style="font-size:0.85rem; color:var(--primary);">In ascolto sulla stanza...</b>
                         <div id="flLiveIdleSubtitle" style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">In attesa che il banditore chiami il prossimo calciatore sul banco d'asta.</div>
                     </div>
@@ -3261,14 +3367,14 @@ HTML_TEMPLATE = """
                                 <div style="font-size:0.72rem; color:var(--text-muted); margin-top:2px;">
                                     Offerta da: <b id="flLotBidder" style="color:var(--primary); font-weight:700;">-</b>
                                 </div>
-                                <div id="flLotTimer" style="font-size:0.75rem; color:var(--warning); font-weight:800; margin-top:3px;">⏱️ In corso...</div>
+                                <div id="flLotTimer" style="font-size:0.75rem; color:var(--warning); font-weight:800; margin-top:3px;"><i class="fa-solid fa-stopwatch"></i> In corso...</div>
                             </div>
                         </div>
 
                         <!-- Big Advisory Banner -->
                         <div id="flLotAdvisoryBanner" style="padding:10px 12px; border-radius:6px; background:rgba(16,185,129,0.12); border:1px solid var(--success); margin-bottom:10px;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                                <b id="flLotAdvisoryBadge" style="font-size:0.88rem; color:var(--success);">🟢 RILANCIA</b>
+                                <b id="flLotAdvisoryBadge" style="font-size:0.88rem; color:var(--success);"><i class="fa-solid fa-circle-play" style="color:var(--success); margin-right:4px;"></i> RILANCIA</b>
                                 <span id="flLotAdvisoryLimit" style="font-size:0.75rem; font-weight:800; color:var(--gold);"></span>
                             </div>
                             <div id="flLotAdvisoryReason" style="font-size:0.78rem; color:var(--text-main); line-height:1.35;">-</div>
@@ -3277,7 +3383,7 @@ HTML_TEMPLATE = """
                         <!-- Actions bar -->
                         <div style="display:flex; gap:8px; align-items:center;">
                             <button class="btn btn-secondary" style="flex:1; padding:6px 10px; font-size:0.75rem; font-weight:700;" onclick="applyLiveLotToManualDraft()">
-                                ⬇️ Pre-imposta nel Battitore Manuale
+                                <i class="fa-solid fa-arrow-down" style="margin-right:4px;"></i> Pre-imposta nel Battitore Manuale
                             </button>
                         </div>
                     </div>
@@ -3333,90 +3439,155 @@ HTML_TEMPLATE = """
             </div>
         </div>
 
-        <!-- TAB 2: I MIEI TARGET & SIMULATORE STRATEGIA (SLOT-BASED ROSTER ARCHITECTURE) -->
+        <!-- TAB 2: I MIEI TARGET & PIANO STRATEGICO -->
         <div id="tab-targets" class="tab-content active">
-            <!-- Financial Commitment & Strategy Simulator HUD -->
-            <div class="card" style="border-left: 4px solid var(--gold);">
-                <div class="card-header">
-                    <div>
-                        <div class="card-title">🎯 Simulatore Impegno Finanziario & Slot Target</div>
-                        <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">
-                            Configura la tua rosa ideale per ruolo e monitora la spesa stimata vs budget di lega.
+            <!-- Segmented Subview Controller -->
+            <div class="target-subview-toggle-bar">
+                <button class="target-subview-btn active" id="subviewBtnTargets" onclick="switchTargetSubview('targets')">
+                    <i class="fa-solid fa-bullseye"></i> I Miei Target
+                </button>
+                <button class="target-subview-btn" id="subviewBtnStrategy" onclick="switchTargetSubview('strategy')">
+                    <i class="fa-solid fa-chart-pie"></i> Scala Slot & Budget
+                </button>
+            </div>
+
+            <!-- Subview 1: I Miei Target & Simulatore -->
+            <div id="subviewTargetContent">
+                <!-- Financial Commitment & Strategy Simulator HUD -->
+                <div class="card" style="border-left: 4px solid var(--gold);">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title"><i class="fa-solid fa-bullseye" style="color:var(--gold); margin-right:6px;"></i> Simulatore Impegno Finanziario & Slot Target</div>
+                            <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">
+                                Configura la tua rosa ideale per ruolo e monitora la spesa stimata vs budget di lega.
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                            <button class="btn-secondary" style="width:auto; padding:5px 10px; font-size:0.75rem; font-weight:700;" onclick="clearAllTargetSlots()"><i class="fa-solid fa-eraser" style="margin-right:4px;"></i> Pulisci Slot</button>
+                            <button class="btn-secondary" style="width:auto; padding:5px 10px; font-size:0.75rem; font-weight:700;" onclick="exportTargetsJSON()"><i class="fa-solid fa-download" style="margin-right:4px;"></i> Esporta Wishlist</button>
                         </div>
                     </div>
-                    <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                        <button class="btn-secondary" style="width:auto; padding:5px 10px; font-size:0.75rem; font-weight:700;" onclick="clearAllTargetSlots()">Pulisci Slot</button>
-                        <button class="btn-secondary" style="width:auto; padding:5px 10px; font-size:0.75rem; font-weight:700;" onclick="exportTargetsJSON()">Esporta Wishlist</button>
+
+                    <!-- 4 KPI Boxes -->
+                    <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:8px; text-align:center; margin-top:10px;">
+                        <div style="background:#0b111e; padding:10px 8px; border-radius:8px; border:1px solid var(--border);">
+                            <div style="font-size:0.68rem; color:var(--text-muted); font-weight:700;">BUDGET LEGA</div>
+                            <div id="targetBudgetTotal" style="font-size:1.15rem; font-weight:800; color:var(--text-main);">1000 cr</div>
+                        </div>
+                        <div style="background:#0b111e; padding:10px 8px; border-radius:8px; border:1px solid var(--border);">
+                            <div style="font-size:0.68rem; color:var(--text-muted); font-weight:700;">SPESA FAIR STIMATA</div>
+                            <div id="targetEstSpendFair" style="font-size:1.15rem; font-weight:800; color:var(--gold);">0 cr</div>
+                        </div>
+                        <div style="background:#0b111e; padding:10px 8px; border-radius:8px; border:1px solid var(--border);">
+                            <div style="font-size:0.68rem; color:var(--text-muted); font-weight:700;">SPESA MAX (TETTO)</div>
+                            <div id="targetEstSpendMax" style="font-size:1.15rem; font-weight:800; color:#f87171;">0 cr</div>
+                        </div>
+                        <div style="background:#0b111e; padding:10px 8px; border-radius:8px; border:1px solid var(--border);">
+                            <div style="font-size:0.68rem; color:var(--text-muted); font-weight:700;">SALDO RESIDUO</div>
+                            <div id="targetEstRemaining" style="font-size:1.15rem; font-weight:800; color:var(--primary);">1000 cr</div>
+                        </div>
+                    </div>
+
+                    <!-- Progress Bar -->
+                    <div style="margin-top:12px;">
+                        <div class="hud-squad-bar" title="Copertura Slot Obiettivo">
+                            <div class="hud-squad-progress" id="targetSlotsProgress" style="width: 0%;"></div>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:var(--text-muted); margin-top:4px;">
+                            <span id="targetSlotsProgressText">0/29 Slot Pianificati</span>
+                            <span>VORP Cumulato Stimato: <b id="targetEstTotalVorp" style="color:var(--primary);">+0.0</b></span>
+                        </div>
+                    </div>
+
+                    <!-- Department Spends (P, D, C, A) -->
+                    <div class="dept-grid" style="margin-top:12px;">
+                        <div class="dept-card">
+                            <div class="dept-label" style="color:var(--role-p);">PORTIERI</div>
+                            <div class="dept-spent" id="targetRepartSpentP">0 cr</div>
+                            <div class="dept-count" id="targetRepartCountP">0/4 slot</div>
+                        </div>
+                        <div class="dept-card">
+                            <div class="dept-label" style="color:var(--role-d);">DIFENSORI</div>
+                            <div class="dept-spent" id="targetRepartSpentD">0 cr</div>
+                            <div class="dept-count" id="targetRepartCountD">0/9 slot</div>
+                        </div>
+                        <div class="dept-card">
+                            <div class="dept-label" style="color:var(--role-c);">CENTROCAMPISTI</div>
+                            <div class="dept-spent" id="targetRepartSpentC">0 cr</div>
+                            <div class="dept-count" id="targetRepartCountC">0/9 slot</div>
+                        </div>
+                        <div class="dept-card">
+                            <div class="dept-label" style="color:var(--role-a);">ATTACCANTI</div>
+                            <div class="dept-spent" id="targetRepartSpentA">0 cr</div>
+                            <div class="dept-count" id="targetRepartCountA">0/7 slot</div>
+                        </div>
                     </div>
                 </div>
 
-                <!-- 4 KPI Boxes -->
-                <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:8px; text-align:center; margin-top:10px;">
-                    <div style="background:#0b111e; padding:10px 8px; border-radius:8px; border:1px solid var(--border);">
-                        <div style="font-size:0.68rem; color:var(--text-muted); font-weight:700;">BUDGET LEGA</div>
-                        <div id="targetBudgetTotal" style="font-size:1.15rem; font-weight:800; color:var(--text-main);">1000 cr</div>
-                    </div>
-                    <div style="background:#0b111e; padding:10px 8px; border-radius:8px; border:1px solid var(--border);">
-                        <div style="font-size:0.68rem; color:var(--text-muted); font-weight:700;">SPESA FAIR STIMATA</div>
-                        <div id="targetEstSpendFair" style="font-size:1.15rem; font-weight:800; color:var(--gold);">0 cr</div>
-                    </div>
-                    <div style="background:#0b111e; padding:10px 8px; border-radius:8px; border:1px solid var(--border);">
-                        <div style="font-size:0.68rem; color:var(--text-muted); font-weight:700;">SPESA MAX (TETTO)</div>
-                        <div id="targetEstSpendMax" style="font-size:1.15rem; font-weight:800; color:#f87171;">0 cr</div>
-                    </div>
-                    <div style="background:#0b111e; padding:10px 8px; border-radius:8px; border:1px solid var(--border);">
-                        <div style="font-size:0.68rem; color:var(--text-muted); font-weight:700;">SALDO RESIDUO</div>
-                        <div id="targetEstRemaining" style="font-size:1.15rem; font-weight:800; color:var(--primary);">1000 cr</div>
-                    </div>
+                <!-- Role Filter Pills -->
+                <div class="pills" id="targetRolePills">
+                    <div class="pill active" onclick="setTargetRoleFilter('ALL')">Tutti i Ruoli</div>
+                    <div class="pill" onclick="setTargetRoleFilter('P')"><i class="fa-solid fa-shield-halved" style="color:var(--role-p); margin-right:4px;"></i> Portieri</div>
+                    <div class="pill" onclick="setTargetRoleFilter('D')"><i class="fa-solid fa-shield" style="color:var(--role-d); margin-right:4px;"></i> Difensori</div>
+                    <div class="pill" onclick="setTargetRoleFilter('C')"><i class="fa-solid fa-gears" style="color:var(--role-c); margin-right:4px;"></i> Centrocampisti</div>
+                    <div class="pill" onclick="setTargetRoleFilter('A')"><i class="fa-solid fa-bolt icon-pulse" style="color:var(--role-a); margin-right:4px;"></i> Attaccanti</div>
                 </div>
 
-                <!-- Progress Bar -->
-                <div style="margin-top:12px;">
-                    <div class="hud-squad-bar" title="Copertura Slot Obiettivo">
-                        <div class="hud-squad-progress" id="targetSlotsProgress" style="width: 0%;"></div>
-                    </div>
-                    <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:var(--text-muted); margin-top:4px;">
-                        <span id="targetSlotsProgressText">0/29 Slot Pianificati</span>
-                        <span>VORP Cumulato Stimato: <b id="targetEstTotalVorp" style="color:var(--primary);">+0.0</b></span>
-                    </div>
-                </div>
-
-                <!-- Department Spends (P, D, C, A) -->
-                <div class="dept-grid" style="margin-top:12px;">
-                    <div class="dept-card">
-                        <div class="dept-label" style="color:var(--role-p);">PORTIERI</div>
-                        <div class="dept-spent" id="targetRepartSpentP">0 cr</div>
-                        <div class="dept-count" id="targetRepartCountP">0/4 slot</div>
-                    </div>
-                    <div class="dept-card">
-                        <div class="dept-label" style="color:var(--role-d);">DIFENSORI</div>
-                        <div class="dept-spent" id="targetRepartSpentD">0 cr</div>
-                        <div class="dept-count" id="targetRepartCountD">0/9 slot</div>
-                    </div>
-                    <div class="dept-card">
-                        <div class="dept-label" style="color:var(--role-c);">CENTROCAMPISTI</div>
-                        <div class="dept-spent" id="targetRepartSpentC">0 cr</div>
-                        <div class="dept-count" id="targetRepartCountC">0/9 slot</div>
-                    </div>
-                    <div class="dept-card">
-                        <div class="dept-label" style="color:var(--role-a);">ATTACCANTI</div>
-                        <div class="dept-spent" id="targetRepartSpentA">0 cr</div>
-                        <div class="dept-count" id="targetRepartCountA">0/7 slot</div>
-                    </div>
-                </div>
+                <!-- Role-based Slotted List Container -->
+                <div id="targetRolesContainer"></div>
             </div>
 
-            <!-- Role Filter Pills -->
-            <div class="pills" id="targetRolePills">
-                <div class="pill active" onclick="setTargetRoleFilter('ALL')">Tutti i Ruoli</div>
-                <div class="pill" onclick="setTargetRoleFilter('P')">🧤 Portieri</div>
-                <div class="pill" onclick="setTargetRoleFilter('D')">🛡️ Difensori</div>
-                <div class="pill" onclick="setTargetRoleFilter('C')">⚙️ Centrocampisti</div>
-                <div class="pill" onclick="setTargetRoleFilter('A')">⚡ Attaccanti</div>
-            </div>
+            <!-- Subview 2: Strategia & Scala Slot -->
+            <div id="subviewStrategyContent" style="display:none;">
+                <!-- Tactical Preset Selector -->
+                <div class="card" style="border-left: 4px solid var(--primary);">
+                    <div class="card-header">
+                        <div class="card-title"><i class="fa-solid fa-chart-pie" style="color:var(--primary); margin-right:6px;"></i> Impostazione Tattica & Filosofia d'Asta</div>
+                        <span id="strategyRemainingBadge" style="font-size:0.85rem; color:var(--gold); font-weight:800;"></span>
+                    </div>
+                    <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:10px;">
+                        Seleziona la tattica da seguire. I tetti di spesa (Stop-Loss) e i calciatori consigliati si adatteranno dinamicamente.
+                    </div>
+                    <div class="pills" id="tacticPresetPills" style="margin-bottom:12px;"></div>
 
-            <!-- Role-based Slotted List Container -->
-            <div id="targetRolesContainer"></div>
+                    <div id="tacticOverviewCard" style="background:#0b111e; border:1px solid var(--border); border-radius:8px; padding:12px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                            <b id="tacticTitle" style="color:var(--text-main); font-size:0.92rem;"></b>
+                            <span id="tacticBadge" class="brand-tag"></span>
+                        </div>
+                        <div id="tacticDesc" style="font-size:0.78rem; color:var(--text-muted); margin-bottom:10px; line-height:1.4;"></div>
+                        <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:6px; text-align:center;">
+                            <div style="background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); padding:6px; border-radius:6px;">
+                                <div style="font-size:0.65rem; color:var(--role-p); font-weight:800;">POR</div>
+                                <div id="splitPOR" style="font-size:0.78rem; font-weight:800; color:var(--gold);">-</div>
+                            </div>
+                            <div style="background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.3); padding:6px; border-radius:6px;">
+                                <div style="font-size:0.65rem; color:var(--role-d); font-weight:800;">DIF</div>
+                                <div id="splitDIF" style="font-size:0.78rem; font-weight:800; color:var(--gold);">-</div>
+                            </div>
+                            <div style="background:rgba(56,189,248,0.1); border:1px solid rgba(56,189,248,0.3); padding:6px; border-radius:6px;">
+                                <div style="font-size:0.65rem; color:var(--role-c); font-weight:800;">CEN</div>
+                                <div id="splitCEN" style="font-size:0.78rem; font-weight:800; color:var(--gold);">-</div>
+                            </div>
+                            <div style="background:rgba(244,63,94,0.1); border:1px solid rgba(244,63,94,0.3); padding:6px; border-radius:6px;">
+                                <div style="font-size:0.65rem; color:var(--role-a); font-weight:800;">ATT</div>
+                                <div id="splitATT" style="font-size:0.78rem; font-weight:800; color:var(--gold);">-</div>
+                            </div>
+                        </div>
+                        <button id="btnCustomConfig" class="btn-secondary" style="margin-top:10px; padding:7px 12px; font-size:0.78rem; font-weight:700; width:100%; display:none;" onclick="openCustomConfigModal()"><i class="fa-solid fa-sliders" style="margin-right:4px;"></i> Configura Budget & Fasce Personalizzate</button>
+                    </div>
+                </div>
+
+                <!-- Role Selector for Slots -->
+                <div class="pills" id="stratRolePills">
+                    <div class="pill active" onclick="setStratRole('A')"><i class="fa-solid fa-bolt" style="color:var(--role-a); margin-right:4px;"></i> Attacco (7 Slot)</div>
+                    <div class="pill" onclick="setStratRole('C')"><i class="fa-solid fa-gears" style="color:var(--role-c); margin-right:4px;"></i> Centrocampo (9 Slot)</div>
+                    <div class="pill" onclick="setStratRole('D')"><i class="fa-solid fa-shield" style="color:var(--role-d); margin-right:4px;"></i> Difesa (9 Slot)</div>
+                    <div class="pill" onclick="setStratRole('P')"><i class="fa-solid fa-shield-halved" style="color:var(--role-p); margin-right:4px;"></i> Porta (4 Slot)</div>
+                </div>
+
+                <div id="strategySlotsContainer"></div>
+            </div>
         </div>
 
         <!-- TAB 3: CHIEDI AL TACTICAL CHATBOT -->
@@ -3449,7 +3620,7 @@ HTML_TEMPLATE = """
                         <span id="aiActiveEngineLabel" style="font-size:0.78rem; font-weight:800; color:var(--primary); white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">Verifica in corso...</span>
                     </div>
                     <button class="btn-secondary" onclick="openAIDiagnosticsModal()" style="width:auto; padding:3px 8px; font-size:0.70rem; font-weight:700; flex-shrink:0; margin-left:6px;">
-                        🔍 Diagnostica
+                        <i class="fa-solid fa-stethoscope" style="margin-right:4px;"></i> Diagnostica
                     </button>
                 </div>
 
@@ -3489,57 +3660,7 @@ HTML_TEMPLATE = """
             </div>
         </div>
 
-        <!-- TAB 4: STRATEGIA & SCALA SLOT -->
-        <div id="tab-strategy" class="tab-content">
-            <!-- Tactical Preset Selector -->
-            <div class="card" style="border-left: 4px solid var(--primary);">
-                <div class="card-header">
-                    <div class="card-title">Impostazione Tattica & Filosofia d'Asta</div>
-                    <span id="strategyRemainingBadge" style="font-size:0.85rem; color:var(--gold); font-weight:800;"></span>
-                </div>
-                <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:10px;">
-                    Seleziona la tattica da seguire. I tetti di spesa (Stop-Loss) e i calciatori consigliati si adatteranno dinamicamente.
-                </div>
-                <div class="pills" id="tacticPresetPills" style="margin-bottom:12px;"></div>
-
-                <div id="tacticOverviewCard" style="background:#0b111e; border:1px solid var(--border); border-radius:8px; padding:12px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                        <b id="tacticTitle" style="color:var(--text-main); font-size:0.92rem;"></b>
-                        <span id="tacticBadge" class="brand-tag"></span>
-                    </div>
-                    <div id="tacticDesc" style="font-size:0.78rem; color:var(--text-muted); margin-bottom:10px; line-height:1.4;"></div>
-                    <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:6px; text-align:center;">
-                        <div style="background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); padding:6px; border-radius:6px;">
-                            <div style="font-size:0.65rem; color:var(--role-p); font-weight:800;">POR</div>
-                            <div id="splitPOR" style="font-size:0.78rem; font-weight:800; color:var(--gold);">-</div>
-                        </div>
-                        <div style="background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.3); padding:6px; border-radius:6px;">
-                            <div style="font-size:0.65rem; color:var(--role-d); font-weight:800;">DIF</div>
-                            <div id="splitDIF" style="font-size:0.78rem; font-weight:800; color:var(--gold);">-</div>
-                        </div>
-                        <div style="background:rgba(56,189,248,0.1); border:1px solid rgba(56,189,248,0.3); padding:6px; border-radius:6px;">
-                            <div style="font-size:0.65rem; color:var(--role-c); font-weight:800;">CEN</div>
-                            <div id="splitCEN" style="font-size:0.78rem; font-weight:800; color:var(--gold);">-</div>
-                        </div>
-                        <div style="background:rgba(244,63,94,0.1); border:1px solid rgba(244,63,94,0.3); padding:6px; border-radius:6px;">
-                            <div style="font-size:0.65rem; color:var(--role-a); font-weight:800;">ATT</div>
-                            <div id="splitATT" style="font-size:0.78rem; font-weight:800; color:var(--gold);">-</div>
-                        </div>
-                    </div>
-                    <button id="btnCustomConfig" class="btn-secondary" style="margin-top:10px; padding:7px 12px; font-size:0.78rem; font-weight:700; width:100%; display:none;" onclick="openCustomConfigModal()">⚙️ Configura Budget & Fasce Personalizzate</button>
-                </div>
-            </div>
-
-            <!-- Role Selector for Slots -->
-            <div class="pills" id="stratRolePills">
-                <div class="pill active" onclick="setStratRole('A')">Attacco (7 Slot)</div>
-                <div class="pill" onclick="setStratRole('C')">Centrocampo (9 Slot)</div>
-                <div class="pill" onclick="setStratRole('D')">Difesa (9 Slot)</div>
-                <div class="pill" onclick="setStratRole('P')">Porta (4 Slot)</div>
-            </div>
-
-            <div id="strategySlotsContainer"></div>
-        </div>
+        <div id="tab-strategy" class="tab-content" style="display:none;"></div>
 
         <!-- TAB 5: TABELLONE ROSE & FINANZE -->
         <div id="tab-rosters" class="tab-content">
@@ -3596,7 +3717,7 @@ HTML_TEMPLATE = """
                 <div class="tactical-pitch-card">
                     <div class="pitch-top-bar" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                         <div class="pitch-title-badge">
-                            <span>🏟️</span>
+                            <span><i class="fa-solid fa-futbol" style="color:var(--gold);"></i></span>
                             <span>Schieramento Tattico Rosa</span>
                         </div>
                         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
@@ -3852,7 +3973,7 @@ HTML_TEMPLATE = """
             <!-- SECTION: Finestra Medica -->
             <div style="background:#0b111e; border:1px solid var(--border); border-radius:10px; padding:14px; margin-bottom:14px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                    <b style="font-size:0.88rem; color:var(--primary);">🏥 Finestra Medica</b>
+                    <b style="font-size:0.88rem; color:var(--primary);"><i class="fa-solid fa-heart-pulse icon-pulse" style="color:var(--danger); margin-right:6px;"></i>Finestra Medica</b>
                     <span id="pdMedBadge" style="font-size:0.78rem; font-weight:800; padding:3px 10px; border-radius:12px;"></span>
                 </div>
                 <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-bottom:10px;">
@@ -3874,7 +3995,7 @@ HTML_TEMPLATE = """
 
             <!-- SECTION: Understat Offensive Metrics -->
             <div style="background:#0b111e; border:1px solid var(--border); border-radius:10px; padding:14px; margin-bottom:14px;">
-                <b style="font-size:0.88rem; color:var(--primary); display:block; margin-bottom:10px;">⚽ Volumi Offensivi (Understat)</b>
+                <b style="font-size:0.88rem; color:var(--primary); display:block; margin-bottom:10px;"><i class="fa-solid fa-futbol" style="color:var(--gold); margin-right:6px;"></i>Volumi Offensivi (Understat)</b>
                 <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-bottom:8px;">
                     <div style="text-align:center;">
                         <div style="font-size:0.62rem; color:var(--text-muted); font-weight:700;">xG / 90'</div>
@@ -3904,7 +4025,7 @@ HTML_TEMPLATE = """
             <!-- SECTION: Quantile Volatility Profile -->
             <div style="background:#0b111e; border:1px solid var(--border); border-radius:10px; padding:14px; margin-bottom:14px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                    <b style="font-size:0.88rem; color:var(--primary);">📊 Profilo Quantilico</b>
+                    <b style="font-size:0.88rem; color:var(--primary);"><i class="fa-solid fa-chart-column" style="color:var(--primary); margin-right:6px;"></i>Profilo Quantilico</b>
                     <span id="pdProfileBadge" style="font-size:0.75rem; font-weight:800; padding:3px 10px; border-radius:12px;"></span>
                 </div>
                 <!-- Visual Bar P10 → P50 → P90 -->
@@ -3934,7 +4055,7 @@ HTML_TEMPLATE = """
 
             <!-- SECTION: Starter Status / Minutes -->
             <div style="background:#0b111e; border:1px solid var(--border); border-radius:10px; padding:14px; margin-bottom:14px;">
-                <b style="font-size:0.88rem; color:var(--primary); display:block; margin-bottom:10px;">📋 Titolarità & Minuti 26/27</b>
+                <b style="font-size:0.88rem; color:var(--primary); display:block; margin-bottom:10px;"><i class="fa-solid fa-clipboard-user" style="color:var(--primary); margin-right:6px;"></i>Titolarità & Minuti 26/27</b>
                 <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px;">
                     <div style="text-align:center;">
                         <div style="font-size:0.62rem; color:var(--text-muted); font-weight:700;">TITOLARE</div>
@@ -3953,7 +4074,7 @@ HTML_TEMPLATE = """
 
             <!-- Action Button -->
             <button id="pdTargetBtn" class="btn btn-primary" style="width:100%; font-weight:800; letter-spacing:0.5px;" onclick="openTargetFromDetail()">
-                🎯 Aggiungi ai Target
+                <i class="fa-solid fa-bullseye" style="margin-right:6px;"></i> Aggiungi ai Target
             </button>
         </div>
     </div>
@@ -4025,7 +4146,7 @@ HTML_TEMPLATE = """
     <div id="leagueSettingsModal" class="modal-backdrop">
         <div class="modal-box" style="max-width:580px;">
             <div class="modal-title">
-                <span>⚙️ Impostazioni Lega & Crediti</span>
+                <span><i class="fa-solid fa-gear" style="color:var(--primary); margin-right:6px;"></i>Impostazioni Lega & Crediti</span>
                 <button style="background:transparent; border:none; color:var(--text-muted); font-size:1.2rem; cursor:pointer;" onclick="closeLeagueSettingsModal()">✕</button>
             </div>
 
@@ -4039,10 +4160,10 @@ HTML_TEMPLATE = """
                 <label style="font-size:0.75rem; color:var(--text-muted); font-weight:700; display:block; margin-bottom:6px;">PRESET RAPIDI:</label>
                 <div style="display:flex; gap:8px;">
                     <button class="btn-secondary" style="flex:1; padding:8px; font-size:0.8rem;" onclick="applyLeaguePreset(500, {P:3, D:8, C:8, A:6})">
-                        🎯 Classico 500cr (25 slot)
+                        <i class="fa-solid fa-bullseye" style="color:var(--role-c); margin-right:6px;"></i>Classico 500cr (25 slot)
                     </button>
                     <button class="btn-secondary" style="flex:1; padding:8px; font-size:0.8rem;" onclick="applyLeaguePreset(1000, {P:4, D:9, C:9, A:7})">
-                        👑 Mantra 1000cr (29 slot)
+                        <i class="fa-solid fa-crown" style="color:var(--gold); margin-right:6px;"></i>Mantra 1000cr (29 slot)
                     </button>
                 </div>
             </div>
@@ -4090,7 +4211,7 @@ HTML_TEMPLATE = """
             <div style="background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25); border-radius:8px; padding:10px 12px; margin-bottom:14px;">
                 <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.78rem; color:var(--text-muted);">
                     <input type="checkbox" id="settingForceReset" style="accent-color:#ef4444; width:16px; height:16px;">
-                    <span><b style="color:#ef4444;">⚠️ Reset Completo:</b> Azzera tutte le assegnazioni, target e cache locale. Usa solo se cambi budget o numero squadre.</span>
+                    <span><b style="color:#ef4444;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i>Reset Completo:</b> Azzera tutte le assegnazioni, target e cache locale. Usa solo se cambi budget o numero squadre.</span>
                 </label>
             </div>
 
@@ -4105,7 +4226,7 @@ HTML_TEMPLATE = """
     <div id="inflationModal" class="modal-backdrop">
         <div class="modal-box" style="max-width:480px;">
             <div class="modal-title">
-                <span>📊 Indice Inflazione Mercato Live</span>
+                <span><i class="fa-solid fa-chart-line" style="color:var(--primary); margin-right:6px;"></i>Indice Inflazione Mercato Live</span>
                 <button style="background:transparent; border:none; color:var(--text-muted); font-size:1.2rem; cursor:pointer;" onclick="closeInflationModal()">✕</button>
             </div>
             <div style="text-align:center; padding:16px 0;">
@@ -4134,7 +4255,7 @@ HTML_TEMPLATE = """
     <div id="adminModal" class="modal-backdrop">
         <div class="modal-box">
             <div class="modal-title">
-                <span>Accesso Battitore Asta</span>
+                <span><i class="fa-solid fa-user-shield" style="color:var(--primary); margin-right:6px;"></i>Accesso Battitore Asta</span>
                 <button style="background:transparent; border:none; color:var(--text-muted); font-size:1.2rem; cursor:pointer;" onclick="closeAdminModal()">✕</button>
             </div>
 
@@ -4155,7 +4276,7 @@ HTML_TEMPLATE = """
     <!-- SESSION LOGIN GATE MODAL -->
     <div id="sessionLoginModal" class="modal-backdrop" style="display:none; z-index:99999; background:rgba(3,4,8,0.92); backdrop-filter:blur(12px);">
         <div class="modal-box" style="max-width:440px; border:1px solid rgba(56,189,248,0.4); box-shadow:0 0 45px rgba(56,189,248,0.25); text-align:center; padding:28px 24px;">
-            <div style="font-size:2.4rem; margin-bottom:6px;">🏆</div>
+            <div style="font-size:2.4rem; margin-bottom:6px; color:var(--gold);"><i class="fa-solid fa-trophy icon-pulse"></i></div>
             <div class="modal-title" style="justify-content:center; margin-bottom:4px;">
                 <span style="font-size:1.35rem; font-weight:800; color:var(--text-main); font-family:'Outfit',sans-serif;">Asta Live Condivisa</span>
             </div>
@@ -4177,7 +4298,7 @@ HTML_TEMPLATE = """
             </div>
 
             <button class="btn btn-primary" style="width:100%; padding:12px; font-size:1rem; font-weight:800; border-radius:8px; margin-top:6px;" onclick="submitSessionLogin()">
-                ⚡ Entra nell'Asta Live
+                <i class="fa-solid fa-bolt" style="margin-right:6px;"></i> Entra nell'Asta Live
             </button>
 
             <div style="margin-top:16px; font-size:0.72rem; color:var(--text-muted); line-height:1.4;">
@@ -4189,7 +4310,7 @@ HTML_TEMPLATE = """
     <!-- ADMIN RESET SESSION MODAL -->
     <div id="adminResetSessionModal" class="modal-backdrop" style="display:none; z-index:99999;">
         <div class="modal-box" style="max-width:440px; border:1px solid #ef4444; box-shadow:0 0 35px rgba(239,68,68,0.25); text-align:center; padding:24px;">
-            <div style="font-size:2.2rem; margin-bottom:6px;">⚠️</div>
+            <div style="font-size:2.2rem; margin-bottom:6px; color:#ef4444;"><i class="fa-solid fa-triangle-exclamation icon-pulse"></i></div>
             <div class="modal-title" style="justify-content:center; color:#fca5a5;">
                 <span>Azzera e Inizia Nuova Sessione</span>
             </div>
@@ -4215,7 +4336,7 @@ HTML_TEMPLATE = """
         <div class="modal-box" style="max-width:480px;">
             <div class="modal-title">
                 <div style="display:flex; align-items:center; gap:8px;">
-                    <span>Diagnostica AI Copilot</span>
+                    <span><i class="fa-solid fa-stethoscope" style="margin-right:6px;"></i>Diagnostica AI Copilot</span>
                     <span id="modalAiBadge" class="brand-tag">STATUS</span>
                 </div>
                 <button style="background:transparent; border:none; color:var(--text-muted); font-size:1.2rem; cursor:pointer;" onclick="closeAIDiagnosticsModal()">✕</button>
@@ -4235,7 +4356,7 @@ HTML_TEMPLATE = """
             <div id="aiProvidersList" style="display:flex; flex-direction:column; gap:6px; margin-bottom:14px;"></div>
 
             <div style="background:rgba(255,45,117,0.06); border:1px solid rgba(255,45,117,0.25); border-radius:8px; padding:10px; margin-bottom:14px;">
-                <div style="font-size:0.75rem; font-weight:800; color:var(--primary); margin-bottom:4px;">💡 Come attivare Groq Free (0$) su Vercel:</div>
+                <div style="font-size:0.75rem; font-weight:800; color:var(--primary); margin-bottom:4px;"><i class="fa-regular fa-lightbulb" style="color:var(--gold); margin-right:4px;"></i>Come attivare Groq Free (0$) su Vercel:</div>
                 <div style="font-size:0.72rem; color:var(--text-muted); line-height:1.4;">
                     1. Crea una chiave gratis su <a href="https://console.groq.com/keys" target="_blank" style="color:var(--primary); font-weight:700;">console.groq.com</a> (nessuna carta richiesta).<br>
                     2. Nel tuo pannello Vercel &rarr; <i>Settings &rarr; Environment Variables</i>.<br>
@@ -4252,31 +4373,27 @@ HTML_TEMPLATE = """
         </div>
     </div>
 
-    <!-- Bottom Navigation -->
+    <!-- Bottom Navigation (Mobile De-densified 5 Tabs) -->
     <nav class="bottom-nav">
         <button class="nav-item" id="botNav-draft" onclick="switchTab('draft')">
-            <svg class="nav-svg" style="color:var(--primary);" viewBox="0 0 24 24"><path d="m14 7 3 3m-9.5 7.5 7-7m-5-5 3.5-3.5a2.121 2.121 0 0 1 3 3L12.5 5.5m-5 5L2 16l6 6 5.5-5.5"></path></svg>
-            <div style="color:var(--primary); font-weight:700;">⚡ Asta FL</div>
+            <i class="fa-solid fa-gavel icon-pulse"></i>
+            <div>Asta Live</div>
         </button>
         <button class="nav-item active" id="botNav-targets" onclick="switchTab('targets')">
-            <svg class="nav-svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>
-            <div>Target</div>
-        </button>
-        <button class="nav-item" id="botNav-ai" onclick="switchTab('ai')">
-            <svg class="nav-svg" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-            <div>FantaAI</div>
-        </button>
-        <button class="nav-item" id="botNav-strategy" onclick="switchTab('strategy')">
-            <svg class="nav-svg" viewBox="0 0 24 24"><path d="M3 3v18h18"></path><path d="m19 9-5 5-4-4-3 3"></path></svg>
-            <div>Scala Slot</div>
+            <i class="fa-solid fa-bullseye"></i>
+            <div>Target & Piano</div>
         </button>
         <button class="nav-item" id="botNav-rosters" onclick="switchTab('rosters')">
-            <svg class="nav-svg" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+            <i class="fa-solid fa-users"></i>
             <div>Rose</div>
         </button>
         <button class="nav-item" id="botNav-listone" onclick="switchTab('listone')">
-            <svg class="nav-svg" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+            <i class="fa-solid fa-table-list"></i>
             <div>Listone</div>
+        </button>
+        <button class="nav-item" id="botNav-ai" onclick="switchTab('ai')">
+            <i class="fa-solid fa-robot icon-float"></i>
+            <div>FantaAI</div>
         </button>
     </nav>
 
@@ -4318,7 +4435,13 @@ HTML_TEMPLATE = """
             if (!container) return;
             const toast = document.createElement('div');
             toast.className = `toast toast-${type}`;
-            const icon = type === 'success' ? '✅' : type === 'danger' ? '❌' : type === 'warning' ? '⚠️' : 'ℹ️';
+            const icon = type === 'success' 
+                ? '<i class="fa-solid fa-circle-check" style="color:var(--accent);"></i>' 
+                : type === 'danger' 
+                    ? '<i class="fa-solid fa-circle-xmark" style="color:#f87171;"></i>' 
+                    : type === 'warning' 
+                        ? '<i class="fa-solid fa-triangle-exclamation icon-pulse" style="color:var(--gold);"></i>' 
+                        : '<i class="fa-solid fa-circle-info" style="color:var(--primary);"></i>';
             toast.innerHTML = `<span>${icon}</span><span>${message}</span>`;
             container.appendChild(toast);
             setTimeout(() => {
@@ -4391,11 +4514,12 @@ HTML_TEMPLATE = """
             document.getElementById('pdInjCount').textContent = med.injuries_count_3y || 0;
 
             const severeEl = document.getElementById('pdSevere');
-            severeEl.textContent = med.infortunio_grave ? '⚠️ Sì' : '✅ No';
-            severeEl.style.color = med.infortunio_grave ? '#ef4444' : '#22c55e';
+            severeEl.innerHTML = med.infortunio_grave 
+                ? '<span style="color:#ef4444;"><i class="fa-solid fa-triangle-exclamation icon-pulse" style="margin-right:3px;"></i> Sì</span>' 
+                : '<span style="color:#22c55e;"><i class="fa-solid fa-circle-check" style="margin-right:3px;"></i> No</span>';
 
             const medBadge = document.getElementById('pdMedBadge');
-            medBadge.textContent = (med.status_badge || '') + ' ' + (med.status_label || 'N/D');
+            medBadge.innerHTML = (med.status_badge || '') + ' ' + (med.status_label || 'N/D');
             if (med.status === 'safe') { medBadge.style.background = 'rgba(34,197,94,0.15)'; medBadge.style.color = '#22c55e'; }
             else if (med.status === 'warning') { medBadge.style.background = 'rgba(234,179,8,0.15)'; medBadge.style.color = '#eab308'; }
             else { medBadge.style.background = 'rgba(239,68,68,0.15)'; medBadge.style.color = '#ef4444'; }
@@ -4429,7 +4553,7 @@ HTML_TEMPLATE = """
             document.getElementById('pdSpread').textContent = (q.spread || 0).toFixed(0);
 
             const profBadge = document.getElementById('pdProfileBadge');
-            profBadge.textContent = q.profile_badge || '';
+            profBadge.innerHTML = q.profile_badge || '';
             if ((q.spread || 0) < 135) { profBadge.style.background = 'rgba(99,102,241,0.15)'; profBadge.style.color = '#818cf8'; }
             else { profBadge.style.background = 'rgba(245,158,11,0.15)'; profBadge.style.color = '#f59e0b'; }
 
@@ -4446,19 +4570,23 @@ HTML_TEMPLATE = """
             document.getElementById('pdQuantileP50Mark').style.left = p50Pos + '%';
 
             // Starter info
-            document.getElementById('pdStarter').textContent = p.is_starter_2627 ? '✅ Sì' : '❌ No';
-            document.getElementById('pdStarter').style.color = p.is_starter_2627 ? '#22c55e' : '#ef4444';
+            const starterEl = document.getElementById('pdStarter');
+            if (starterEl) {
+                starterEl.innerHTML = p.is_starter_2627 
+                    ? '<span style="color:#22c55e;"><i class="fa-solid fa-circle-check" style="margin-right:3px;"></i> Sì</span>' 
+                    : '<span style="color:#ef4444;"><i class="fa-solid fa-circle-xmark" style="margin-right:3px;"></i> No</span>';
+            }
             document.getElementById('pdStarts').textContent = p.starts_2627 || 0;
             document.getElementById('pdMinutes').textContent = (p.minutes_2627 || 0).toLocaleString();
 
             // Target button state
             const btn = document.getElementById('pdTargetBtn');
             if (p.is_assigned) {
-                btn.textContent = '✅ Già Assegnato';
+                btn.innerHTML = '<i class="fa-solid fa-check" style="margin-right:5px;"></i> Già Assegnato';
                 btn.disabled = true;
                 btn.style.opacity = '0.5';
             } else {
-                btn.textContent = '🎯 Aggiungi ai Target';
+                btn.innerHTML = '<i class="fa-solid fa-bullseye" style="margin-right:5px;"></i> Aggiungi ai Target';
                 btn.disabled = false;
                 btn.style.opacity = '1';
             }
@@ -4497,7 +4625,7 @@ HTML_TEMPLATE = """
                 openAssignModal(p.player);
             } else if (typeof addToFavorites === 'function') {
                 addToFavorites(p.player);
-                showToast('🎯 ' + p.player + ' aggiunto ai Target', 'success');
+                showToast(p.player + ' aggiunto ai Target', 'success');
             }
         }
 
@@ -4681,9 +4809,11 @@ HTML_TEMPLATE = """
             const unlockBtn = document.getElementById('adminUnlockBtn');
             const unlockText = document.getElementById('adminBtnText');
             const btnReset = document.getElementById('btnAdminResetSession');
+            const sideReset = document.getElementById('sideNavResetSession');
 
             if (sideBtn) sideBtn.style.display = 'flex';
             if (botBtn) botBtn.style.display = 'flex';
+            if (sideReset) sideReset.style.display = isAdmin ? 'flex' : 'none';
 
             if (isAdmin) {
                 if (unlockBtn) unlockBtn.classList.add('unlocked');
@@ -5148,7 +5278,37 @@ HTML_TEMPLATE = """
             }
         }
 
+        let currentTargetSubview = 'targets';
+
+        function switchTargetSubview(subview) {
+            currentTargetSubview = subview;
+            const targetContent = document.getElementById('subviewTargetContent');
+            const strategyContent = document.getElementById('subviewStrategyContent');
+            const btnTargets = document.getElementById('subviewBtnTargets');
+            const btnStrategy = document.getElementById('subviewBtnStrategy');
+
+            if (subview === 'strategy') {
+                if (targetContent) targetContent.style.display = 'none';
+                if (strategyContent) strategyContent.style.display = 'block';
+                if (btnTargets) btnTargets.classList.remove('active');
+                if (btnStrategy) btnStrategy.classList.add('active');
+                renderStrategyTab();
+            } else {
+                if (targetContent) targetContent.style.display = 'block';
+                if (strategyContent) strategyContent.style.display = 'none';
+                if (btnTargets) btnTargets.classList.add('active');
+                if (btnStrategy) btnStrategy.classList.remove('active');
+                renderTargetsTab();
+            }
+        }
+
         function switchTab(tabId) {
+            if (tabId === 'strategy') {
+                switchTab('targets');
+                switchTargetSubview('strategy');
+                return;
+            }
+
             document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.sidebar-nav-btn').forEach(el => el.classList.remove('active'));
@@ -5170,8 +5330,13 @@ HTML_TEMPLATE = """
                 bd.classList.remove('show');
             }
 
-            if (tabId === 'targets') renderTargetsTab();
-            if (tabId === 'strategy') renderStrategyTab();
+            if (tabId === 'targets') {
+                if (currentTargetSubview === 'strategy') {
+                    renderStrategyTab();
+                } else {
+                    renderTargetsTab();
+                }
+            }
             if (tabId === 'rosters') renderRosterTab();
             if (tabId === 'listone') renderListone();
         }
@@ -6077,10 +6242,10 @@ HTML_TEMPLATE = """
                 const isBloccoTeammate = (role === 'P' && p1Team && p.team === p1Team && p.player !== p1Name);
                 const medDays = (p.medical && p.medical.days_lost_3y) || 0;
                 const medBadge = medDays >= 120 
-                    ? `<span class="medical-badge medical-badge-danger" onclick="event.stopPropagation(); openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')" title="Finestra Medica: ${medDays} gg infortunio">🔴 ${medDays}gg</span>`
+                    ? `<span class="medical-badge medical-badge-danger" onclick="event.stopPropagation(); openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')" title="Finestra Medica: ${medDays} gg infortunio"><i class="fa-solid fa-heart-pulse icon-pulse"></i> ${medDays}gg</span>`
                     : (medDays >= 30 
-                        ? `<span class="medical-badge medical-badge-warning" onclick="event.stopPropagation(); openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')" title="Finestra Medica: ${medDays} gg infortunio">🟡 ${medDays}gg</span>`
-                        : `<span class="medical-badge medical-badge-success" onclick="event.stopPropagation(); openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')" title="Finestra Medica: Integro">🟢 Integro</span>`);
+                        ? `<span class="medical-badge medical-badge-warning" onclick="event.stopPropagation(); openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')" title="Finestra Medica: ${medDays} gg infortunio"><i class="fa-solid fa-triangle-exclamation"></i> ${medDays}gg</span>`
+                        : `<span class="medical-badge medical-badge-success" onclick="event.stopPropagation(); openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')" title="Finestra Medica: Integro"><i class="fa-solid fa-circle-check"></i> Integro</span>`);
 
                 return `
                     <div class="candidate-player-row" style="${isAssigned ? 'opacity:0.45;' : ''} ${isBloccoTeammate ? 'background:rgba(217, 119, 6, 0.08); border-left:3px solid var(--gold);' : ''}">
@@ -6089,7 +6254,7 @@ HTML_TEMPLATE = """
                             <span class="tier-badge tier-${p.fascia}">F${p.fascia}</span>
                             <b style="cursor:pointer; font-size:0.95rem;" onclick="openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')">${p.player}</b>
                             <small style="color:var(--text-muted);">(${p.team})</small>
-                            ${isBloccoTeammate ? `<span class="badge" style="background:rgba(217, 119, 6, 0.25); color:var(--gold); border:1px solid rgba(217, 119, 6, 0.5); font-size:0.68rem; font-weight:800;">🛡️ Blocco ${p.team}</span>` : ''}
+                            ${isBloccoTeammate ? `<span class="badge" style="background:rgba(217, 119, 6, 0.25); color:var(--gold); border:1px solid rgba(217, 119, 6, 0.5); font-size:0.68rem; font-weight:800;"><i class="fa-solid fa-shield"></i> Blocco ${p.team}</span>` : ''}
                             ${medBadge}
                             ${isStarter ? `<span class="scout-tag-starter">✓ Titolare</span>` : `<span style="font-size:0.7rem; color:var(--text-muted); font-style:italic;">Riserva</span>`}
                             ${isAssigned ? `<span style="color:var(--danger); font-size:0.72rem; font-weight:700;">[ASSEGNATO]</span>` : ''}
@@ -6207,10 +6372,10 @@ HTML_TEMPLATE = """
             if (!container) return;
 
             const roleMeta = {
-                P: { name: "PORTIERI", icon: "🧤", total: struct.P || 4, color: "var(--role-p)" },
-                D: { name: "DIFENSORI", icon: "🛡️", total: struct.D || 9, color: "var(--role-d)" },
-                C: { name: "CENTROCAMPISTI", icon: "⚙️", total: struct.C || 9, color: "var(--role-c)" },
-                A: { name: "ATTACCANTI", icon: "⚡", total: struct.A || 7, color: "var(--role-a)" }
+                P: { name: "PORTIERI", icon: '<i class="fa-solid fa-shield-halved"></i>', total: struct.P || 4, color: "var(--role-p)" },
+                D: { name: "DIFENSORI", icon: '<i class="fa-solid fa-shield"></i>', total: struct.D || 9, color: "var(--role-d)" },
+                C: { name: "CENTROCAMPISTI", icon: '<i class="fa-solid fa-gears"></i>', total: struct.C || 9, color: "var(--role-c)" },
+                A: { name: "ATTACCANTI", icon: '<i class="fa-solid fa-bolt icon-pulse"></i>', total: struct.A || 7, color: "var(--role-a)" }
             };
 
             const activeRoles = currentTargetRoleFilter === 'ALL' ? ['P', 'D', 'C', 'A'] : [currentTargetRoleFilter];
@@ -6251,7 +6416,7 @@ HTML_TEMPLATE = """
                             <div class="pill ${targetCandidateFascia === 2 ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem;" onclick="setTargetCandidateFascia(2)">F2 Alternanza</div>
                             <div class="pill ${targetCandidateFascia === 3 ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem;" onclick="setTargetCandidateFascia(3)">F3 Low-Cost</div>
                             <div class="pill ${targetCandidateFascia === 4 ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem;" onclick="setTargetCandidateFascia(4)">F4 Riserve</div>
-                            ${(p1Team && i > 0) ? `<div class="pill ${targetCandidateFascia === 'BLOCCO' ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem; border:1px solid var(--gold); color:var(--gold);" onclick="setTargetCandidateFascia('BLOCCO')">🛡️ Solo Blocco ${p1Team}</div>` : ''}
+                            ${(p1Team && i > 0) ? `<div class="pill ${targetCandidateFascia === 'BLOCCO' ? 'active' : ''}" style="padding:2px 8px; font-size:0.7rem; border:1px solid var(--gold); color:var(--gold);" onclick="setTargetCandidateFascia('BLOCCO')"><i class="fa-solid fa-shield"></i> Solo Blocco ${p1Team}</div>` : ''}
                         `;
                     } else {
                         pillsHtml = `
@@ -6273,10 +6438,10 @@ HTML_TEMPLATE = """
                         const isStarter = p.is_starter_2627 === 1 || p.is_starter_2627 === true || p.is_starter_2627 === "1";
                         const medDays = (p.medical && p.medical.days_lost_3y) || 0;
                         const medBadge = medDays >= 120 
-                            ? `<span class="medical-badge medical-badge-danger" onclick="event.stopPropagation(); openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')" title="Finestra Medica: ${medDays} gg infortunio">🔴 ${medDays}gg</span>`
+                            ? `<span class="medical-badge medical-badge-danger" onclick="event.stopPropagation(); openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')" title="Finestra Medica: ${medDays} gg infortunio"><i class="fa-solid fa-heart-pulse icon-pulse"></i> ${medDays}gg</span>`
                             : (medDays >= 30 
-                                ? `<span class="medical-badge medical-badge-warning" onclick="event.stopPropagation(); openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')" title="Finestra Medica: ${medDays} gg infortunio">🟡 ${medDays}gg</span>`
-                                : `<span class="medical-badge medical-badge-success" onclick="event.stopPropagation(); openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')" title="Finestra Medica: Integro">🟢 Integro</span>`);
+                                ? `<span class="medical-badge medical-badge-warning" onclick="event.stopPropagation(); openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')" title="Finestra Medica: ${medDays} gg infortunio"><i class="fa-solid fa-triangle-exclamation"></i> ${medDays}gg</span>`
+                                : `<span class="medical-badge medical-badge-success" onclick="event.stopPropagation(); openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')" title="Finestra Medica: Integro"><i class="fa-solid fa-circle-check"></i> Integro</span>`);
 
                         let statusBadge = '';
                         if (isMine) statusBadge = `<span style="color:var(--success); font-weight:800; font-size:0.75rem;">✓ ACQUISTATO (${assignedMap[playerName].price} cr)</span>`;
@@ -6301,9 +6466,9 @@ HTML_TEMPLATE = """
                                             <div style="font-size:0.70rem; color:var(--primary); font-weight:700;">VORP +${(p.vorp || 0).toFixed(1)}</div>
                                         </div>
                                         <div style="display:flex; gap:4px;">
-                                            <button class="btn-secondary" style="width:auto; padding:4px 8px; font-size:0.72rem; font-weight:700;" onclick="openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')" title="Finestra Medica">ℹ️ Info</button>
-                                            <button class="btn-secondary" style="width:auto; padding:4px 8px; font-size:0.72rem; font-weight:700;" onclick="toggleTargetSlotCandidates('${slotKey}')" title="Cambia giocatore">🔄 Cambia</button>
-                                            <button class="btn-danger" style="width:auto; padding:4px 8px; font-size:0.72rem; font-weight:700;" onclick="vacateTargetSlot('${role}', ${i})" title="Libera slot">✕</button>
+                                            <button class="btn-secondary" style="width:auto; padding:4px 8px; font-size:0.72rem; font-weight:700;" onclick="openPlayerDetailDrawer('${p.player.replace(/'/g, "\\\\'")}')" title="Finestra Medica"><i class="fa-solid fa-circle-info"></i> Info</button>
+                                            <button class="btn-secondary" style="width:auto; padding:4px 8px; font-size:0.72rem; font-weight:700;" onclick="toggleTargetSlotCandidates('${slotKey}')" title="Cambia giocatore"><i class="fa-solid fa-arrows-rotate"></i> Cambia</button>
+                                            <button class="btn-danger" style="width:auto; padding:4px 8px; font-size:0.72rem; font-weight:700;" onclick="vacateTargetSlot('${role}', ${i})" title="Libera slot"><i class="fa-solid fa-xmark"></i></button>
                                         </div>
                                     </div>
                                 </div>
@@ -7201,9 +7366,13 @@ HTML_TEMPLATE = """
             const rolePlayers = roster.filter(p => p.role === role);
 
             if (rolePlayers.length === 0) {
+                const roleEmptyIcon = role === 'P' ? '<i class="fa-solid fa-shield-halved" style="color:var(--role-p);"></i>' 
+                    : role === 'D' ? '<i class="fa-solid fa-shield" style="color:var(--role-d);"></i>' 
+                    : role === 'C' ? '<i class="fa-solid fa-gears" style="color:var(--role-c);"></i>' 
+                    : '<i class="fa-solid fa-bolt icon-pulse" style="color:var(--role-a);"></i>';
                 listEl.innerHTML = `
                     <div style="text-align:center; padding:24px 12px; color:var(--text-muted); background:rgba(0,0,0,0.25); border-radius:8px;">
-                        <div style="font-size:1.8rem; margin-bottom:8px;">🧤</div>
+                        <div style="font-size:1.8rem; margin-bottom:8px;">${roleEmptyIcon}</div>
                         <div style="font-weight:700; color:var(--text-main);">Nessun ${roleNameMap[role] || role} in rosa</div>
                         <div style="font-size:0.75rem; margin-top:4px;">Acquista calciatori per questo ruolo durante l'Asta o consultali nel Listone!</div>
                     </div>
@@ -7457,23 +7626,23 @@ HTML_TEMPLATE = """
                 const medDays = (p.medical && p.medical.days_lost_3y) || 0;
                 const encPlayer = encodeURIComponent(p.player);
                 const medBadge = medDays >= 120 
-                    ? `<span class="medical-badge medical-badge-danger" data-player="${encPlayer}" onclick="event.stopPropagation(); openPlayerDetailDrawer(decodeURIComponent(this.getAttribute('data-player')))" title="Finestra Medica: ${medDays} gg infortunio (3 anni)">🔴 ${medDays}gg</span>`
+                    ? `<span class="medical-badge medical-badge-danger" data-player="${encPlayer}" onclick="event.stopPropagation(); openPlayerDetailDrawer(decodeURIComponent(this.getAttribute('data-player')))" title="Finestra Medica: ${medDays} gg infortunio (3 anni)"><i class="fa-solid fa-heart-pulse icon-pulse"></i> ${medDays}gg</span>`
                     : (medDays >= 30 
-                        ? `<span class="medical-badge medical-badge-warning" data-player="${encPlayer}" onclick="event.stopPropagation(); openPlayerDetailDrawer(decodeURIComponent(this.getAttribute('data-player')))" title="Finestra Medica: ${medDays} gg infortunio (3 anni)">🟡 ${medDays}gg</span>`
-                        : `<span class="medical-badge medical-badge-success" data-player="${encPlayer}" onclick="event.stopPropagation(); openPlayerDetailDrawer(decodeURIComponent(this.getAttribute('data-player')))" title="Finestra Medica: Integro (${medDays} gg infortunio)">🟢 Integro</span>`);
+                        ? `<span class="medical-badge medical-badge-warning" data-player="${encPlayer}" onclick="event.stopPropagation(); openPlayerDetailDrawer(decodeURIComponent(this.getAttribute('data-player')))" title="Finestra Medica: ${medDays} gg infortunio (3 anni)"><i class="fa-solid fa-triangle-exclamation"></i> ${medDays}gg</span>`
+                        : `<span class="medical-badge medical-badge-success" data-player="${encPlayer}" onclick="event.stopPropagation(); openPlayerDetailDrawer(decodeURIComponent(this.getAttribute('data-player')))" title="Finestra Medica: Integro (${medDays} gg infortunio)"><i class="fa-solid fa-circle-check"></i> Integro</span>`);
 
                 return `
                     <div class="player-row role-${p.role}" style="${isAssigned ? 'opacity:0.42;' : ''}">
                         <div class="player-info">
                             <div class="player-name">
                                 <button class="target-icon-btn ${isTarget ? 'active' : ''}" data-player="${encPlayer}" onclick="openTargetModal(decodeURIComponent(this.getAttribute('data-player')))" title="Aggiungi/Modifica Target">
-                                    <svg class="nav-svg" style="width:14px; height:14px;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="2"></circle></svg>
+                                    <i class="fa-solid fa-bullseye" style="font-size:12px;"></i>
                                 </button>
                                 <span class="badge badge-${p.role}">${p.role}</span>
                                 <span style="font-family:'Outfit',sans-serif; font-weight:700; font-size:1.05rem; cursor:pointer;" data-player="${encPlayer}" onclick="openPlayerDetailDrawer(decodeURIComponent(this.getAttribute('data-player')))"> ${p.player}</span>
                                 <button data-player="${encPlayer}" onclick="openPlayerDetailDrawer(decodeURIComponent(this.getAttribute('data-player')))"
-                                    title="Dettaglio Giocatore" style="background:transparent; border:none; cursor:pointer; font-size:0.82rem; padding:0 2px; opacity:0.65; transition:opacity 0.2s;"
-                                    onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.65'">ℹ️</button>
+                                    title="Dettaglio Giocatore" style="background:transparent; border:none; cursor:pointer; font-size:0.85rem; padding:0 3px; color:var(--primary); opacity:0.75; transition:opacity 0.2s;"
+                                    onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.75'"><i class="fa-solid fa-circle-info"></i></button>
                                 <small style="color:var(--text-muted); font-weight:600;">(${p.team})</small>
                                 ${medBadge}
                                 ${isStarter ? `<span class="scout-tag-starter">✓ Titolare</span>` : ''}
@@ -7565,14 +7734,14 @@ HTML_TEMPLATE = """
                 }
 
                 if (secLeft <= 0) {
-                    elTimer.innerHTML = `<span style="color:var(--danger); font-weight:800;">⏱️ 0s — Ultima chiamata!</span>${shardBadge}`;
+                    elTimer.innerHTML = `<span style="color:var(--danger); font-weight:800;"><i class="fa-solid fa-stopwatch icon-pulse" style="margin-right:4px;"></i> 0s — Ultima chiamata!</span>${shardBadge}`;
                 } else if (secLeft <= 3) {
-                    elTimer.innerHTML = `<span style="color:var(--danger); font-weight:800;">⏱️ ${secLeft}s rimasti (BATTE!)</span>${shardBadge}`;
+                    elTimer.innerHTML = `<span style="color:var(--danger); font-weight:800;"><i class="fa-solid fa-stopwatch icon-pulse" style="margin-right:4px;"></i> ${secLeft}s rimasti (BATTE!)</span>${shardBadge}`;
                 } else {
-                    elTimer.innerHTML = `<span style="color:var(--warning); font-weight:800;">⏱️ ${secLeft}s rimasti</span>${shardBadge}`;
+                    elTimer.innerHTML = `<span style="color:var(--warning); font-weight:800;"><i class="fa-solid fa-stopwatch" style="margin-right:4px;"></i> ${secLeft}s rimasti</span>${shardBadge}`;
                 }
             } else {
-                elTimer.innerHTML = `⏱️ Offerta aperta${shardBadge}`;
+                elTimer.innerHTML = `<i class="fa-solid fa-stopwatch" style="margin-right:4px;"></i> Offerta aperta${shardBadge}`;
             }
         }
 
@@ -7690,7 +7859,7 @@ HTML_TEMPLATE = """
                     }
                     if (idleView) idleView.style.display = 'block';
                     if (activeView) activeView.style.display = 'none';
-                    if (idleTitle) idleTitle.innerHTML = `<span style="color:var(--warning);">⚠️ Link di invito rilevato</span>`;
+                    if (idleTitle) idleTitle.innerHTML = `<span style="color:var(--warning);"><i class="fa-solid fa-triangle-exclamation icon-pulse" style="margin-right:4px;"></i> Link di invito rilevato</span>`;
                     if (idleSub) idleSub.textContent = data.message;
                     return;
                 }
@@ -7762,7 +7931,12 @@ HTML_TEMPLATE = """
 
                     const adv = lot.advisory || {};
                     if (badge) {
-                        badge.textContent = adv.badge || '🟢 RILANCIA';
+                        const rawBadge = adv.badge || '🟢 RILANCIA';
+                        const iconBadge = rawBadge
+                            .replace('🟢', '<i class="fa-solid fa-circle-play icon-pulse" style="margin-right:4px;"></i>')
+                            .replace('🔴', '<i class="fa-solid fa-circle-stop icon-pulse" style="margin-right:4px;"></i>')
+                            .replace('🟡', '<i class="fa-solid fa-triangle-exclamation icon-pulse" style="margin-right:4px;"></i>');
+                        badge.innerHTML = iconBadge;
                         badge.style.color = adv.color || 'var(--success)';
                     }
                     if (limit) {
