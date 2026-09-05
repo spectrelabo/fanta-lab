@@ -842,7 +842,8 @@ def api_players():
     favorites = set(state.get("favorites", []))
 
     league_settings = load_league_settings()
-    budget_total = state.get("budget_total", league_settings.get("budget", DEFAULT_BUDGET))
+    budget_arg = request.args.get("budget", type=int)
+    budget_total = budget_arg if (budget_arg and budget_arg > 0) else state.get("budget_total", league_settings.get("budget", DEFAULT_BUDGET))
     roster_structure = state.get("roster_structure", league_settings.get("roster_slots", DEFAULT_ROSTER_SLOTS))
     n_teams = max(2, len(state.get("teams", [])))
 
@@ -874,7 +875,12 @@ def api_players():
             continue
 
         fair_1000 = int(row.get("prezzo_fair_1000", 1))
-        fair_scaled = custom_fair_prices.get(p_name, max(1, int(round(fair_1000 * budget_scale))))
+        fair_500 = int(row.get("prezzo_fair_500", max(1, round(fair_1000 * 0.5))))
+        if budget_total == 500 and "prezzo_fair_500" in row and pd.notna(row.get("prezzo_fair_500")):
+            base_fair = fair_500
+        else:
+            base_fair = custom_fair_prices.get(p_name, max(1, int(round(fair_1000 * budget_scale))))
+        fair_scaled = base_fair
         fair_live = max(1, int(round(fair_scaled * inflation_factor)))
         vorp_val = custom_vorp.get(p_name, float(row.get("vorp_points", 0)))
 
@@ -948,9 +954,10 @@ def api_players():
             "team": str(row.get("team", "")),
             "price_official": int(row.get("Prezzo_Consigliato_Cr", 1)),
             "price_fair_1000": fair_1000,
-            "price_fair_500": int(row.get("prezzo_fair_500", 1)),
+            "price_fair_500": fair_500,
             "price_fair_scaled": fair_scaled,
             "price_fair_live": fair_live,
+            "_budget_scale": budget_scale,
             "surplus_value": int(row.get("surplus_value_cr", 0)),
             "score": float(row.get("score_composito", 0)),
             "pts_exp": p50,
@@ -1519,6 +1526,79 @@ def api_reset():
     state = get_initial_state()
     save_state(state)
     return jsonify({"success": True, "state": state})
+
+
+# ──────────────────────────────────────────────────────────────────────
+# FANTALAB LIVE ROOM SNIFFER (BETA) & ADVISORY
+# ──────────────────────────────────────────────────────────────────────
+
+from live_bridge.adapter import FantaLabLiveAdapter
+
+live_adapter = FantaLabLiveAdapter()
+
+
+@app.route("/api/live/snapshot", methods=["GET", "POST"])
+def api_live_snapshot():
+    try:
+        if request.method == "POST":
+            data = request.get_json(silent=True) or {}
+        else:
+            data = request.args.to_dict()
+
+        room_id = data.get("room_id", "").strip()
+        shard = data.get("shard")
+        if shard in ("auto", "null", "none", ""):
+            shard = None
+        elif shard is not None:
+            try:
+                shard = int(shard)
+            except (ValueError, TypeError):
+                pass
+
+        profile_id = data.get("profile_id", "my_team")
+        user_targets_raw = data.get("user_targets")
+
+        user_targets = {}
+        if isinstance(user_targets_raw, dict):
+            user_targets = user_targets_raw
+        elif isinstance(user_targets_raw, str) and user_targets_raw:
+            try:
+                user_targets = json.loads(user_targets_raw)
+            except Exception:
+                user_targets = {}
+
+        state = load_state()
+        df = load_dataset()
+        league_settings = load_league_settings()
+        budget_arg = request.args.get("budget", type=int)
+        budget_total = budget_arg if (budget_arg and budget_arg > 0) else state.get("budget_total", league_settings.get("budget", DEFAULT_BUDGET))
+        fair_col = "prezzo_fair_500" if budget_total == 500 else "prezzo_fair_1000"
+
+        players_by_name = {}
+        for _, row in df.iterrows():
+            name = str(row["player"]).strip()
+            players_by_name[name.lower()] = {
+                "player": name,
+                "role": str(row.get("role", "")),
+                "team": str(row.get("team", "")),
+                "price_fair_live": float(row.get(fair_col, row.get("prezzo_fair_1000", row.get("Prezzo_Consigliato_Cr", 1)))),
+                "score_composito": float(row.get("score_composito", 0.0)),
+                "pts_exp": float(row.get("predicted_pts_p50", 0.0)),
+                "fascia": int(row.get("fascia", 3)) if "fascia" in row and not pd.isna(row.get("fascia")) else 3,
+            }
+
+        res = live_adapter.get_advisory_snapshot(
+            room_id=room_id,
+            shard=shard,
+            active_profile_id=profile_id,
+            auction_state=state,
+            all_players_by_name=players_by_name,
+            user_targets=user_targets,
+        )
+        return jsonify(res)
+    except Exception as e:
+        logger.error(f"Error in api_live_snapshot: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e), "lot": None}), 500
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -2838,10 +2918,10 @@ HTML_TEMPLATE = """
             </div>
 
             <div class="sidebar-nav">
-                <!-- Gated Admin Tab -->
-                <button class="sidebar-nav-btn" id="sideNav-draft" onclick="switchTab('draft')" style="display:none;">
-                    <svg class="nav-svg" viewBox="0 0 24 24"><path d="m14 7 3 3m-9.5 7.5 7-7m-5-5 3.5-3.5a2.121 2.121 0 0 1 3 3L12.5 5.5m-5 5L2 16l6 6 5.5-5.5"></path></svg>
-                    <span>Asta Live (Battitore)</span>
+                <!-- Asta FantaLab Live Tab (Always Visible) -->
+                <button class="sidebar-nav-btn" id="sideNav-draft" onclick="switchTab('draft')">
+                    <svg class="nav-svg" style="color:var(--primary);" viewBox="0 0 24 24"><path d="m14 7 3 3m-9.5 7.5 7-7m-5-5 3.5-3.5a2.121 2.121 0 0 1 3 3L12.5 5.5m-5 5L2 16l6 6 5.5-5.5"></path></svg>
+                    <span style="font-weight:700; color:var(--primary);">⚡ Asta FantaLab Live</span>
                 </button>
 
                 <button class="sidebar-nav-btn active" id="sideNav-targets" onclick="switchTab('targets')">
@@ -2921,6 +3001,11 @@ HTML_TEMPLATE = """
                 </div>
 
                 <div class="header-actions">
+                    <button id="btnHeaderLiveSniffer" class="profile-btn" onclick="switchTab('draft')" style="border:1px solid var(--primary); background:rgba(255,45,117,0.12); color:var(--primary); font-weight:700;" title="Asta FantaLab Live">
+                        <span>⚡</span>
+                        <span class="hide-mobile">Asta FantaLab</span>
+                    </button>
+
                     <button id="btnLeagueSettings" class="profile-btn" onclick="openLeagueSettingsModal()" title="Configura Budget, Slot e Squadre">
                         <span style="font-size:0.9rem;">⚙️</span>
                         <span class="hide-mobile">Lega</span>
@@ -2940,11 +3025,118 @@ HTML_TEMPLATE = """
 
             <div class="container">
 
-        <!-- TAB 1: BATTITORE LIVE (GATED ADMIN) -->
+        <!-- TAB 1: BATTITORE LIVE & FANTALAB LIVE SNIFFER (BETA) -->
         <div id="tab-draft" class="tab-content">
+
+            <!-- FANTALAB LIVE SNIFFER (BETA) WIDGET -->
+            <div class="card" style="border-left: 4px solid var(--primary); background: radial-gradient(circle at top right, rgba(56,189,248,0.06), transparent 70%), #0b111e; margin-bottom:14px;">
+                <div class="card-header" style="margin-bottom:8px;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span style="font-size:1.1rem;">⚡</span>
+                        <div>
+                            <div class="card-title" style="margin-bottom:0; display:flex; align-items:center; gap:6px;">
+                                FantaLab Live Sniffer 
+                                <span class="brand-tag" style="font-size:0.62rem; padding:2px 6px; background:rgba(56,189,248,0.15); color:var(--primary); border:1px solid var(--primary); font-weight:800;">BETA</span>
+                            </div>
+                            <div style="font-size:0.72rem; color:var(--text-muted);">Ascolto in tempo reale della stanza d'asta con verdetto semaforico (Safe Drain & Target)</div>
+                        </div>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span id="flLiveStatusText" style="font-size:0.75rem; font-weight:800; color:var(--text-muted);">DISATTIVO</span>
+                        <button id="flToggleBtn" class="btn btn-secondary" style="width:auto; padding:4px 12px; font-size:0.75rem; font-weight:800;" onclick="toggleFantaLabLiveSniffer()">▶ Avvia Ascolto</button>
+                    </div>
+                </div>
+
+                <!-- Config Bar: Room ID & Shard -->
+                <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
+                    <div style="flex:3;">
+                        <input type="text" id="flRoomId" placeholder="Inserisci Room ID FantaLab (es. 86b90c3d-5206-...)" oninput="onFantaLabRoomConfigChange()" style="margin-bottom:0; padding:6px 10px; font-size:0.78rem; font-family:monospace;">
+                    </div>
+                    <div style="flex:1;">
+                        <select id="flShard" onchange="onFantaLabRoomConfigChange()" style="margin-bottom:0; padding:6px 8px; font-size:0.78rem;">
+                            <option value="auto">Shard: Auto (0-23)</option>
+                            <option value="0">Shard 0</option>
+                            <option value="1">Shard 1</option>
+                            <option value="2">Shard 2</option>
+                            <option value="3">Shard 3</option>
+                            <option value="4">Shard 4</option>
+                            <option value="5">Shard 5</option>
+                            <option value="6">Shard 6</option>
+                            <option value="7">Shard 7</option>
+                            <option value="8">Shard 8</option>
+                            <option value="9">Shard 9</option>
+                            <option value="10">Shard 10</option>
+                            <option value="11">Shard 11</option>
+                            <option value="12">Shard 12</option>
+                            <option value="13">Shard 13</option>
+                            <option value="14">Shard 14</option>
+                            <option value="15">Shard 15</option>
+                            <option value="16">Shard 16</option>
+                            <option value="17">Shard 17</option>
+                            <option value="18">Shard 18</option>
+                            <option value="19">Shard 19</option>
+                            <option value="20">Shard 20</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Live Advisory Stage -->
+                <div id="flLiveMonitorBox" style="display:none; background:#040711; border:1px solid var(--border); border-radius:8px; padding:12px; margin-top:8px;">
+                    <!-- Idle State -->
+                    <div id="flLiveIdleView" style="text-align:center; padding:12px 6px;">
+                        <div style="font-size:1.1rem; margin-bottom:4px;">📡</div>
+                        <b id="flLiveIdleTitle" style="font-size:0.85rem; color:var(--primary);">In ascolto sulla stanza...</b>
+                        <div id="flLiveIdleSubtitle" style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">In attesa che il banditore chiami il prossimo calciatore sul banco d'asta.</div>
+                    </div>
+
+                    <!-- Active Lot State -->
+                    <div id="flLiveActiveView" style="display:none;">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px; flex-wrap:wrap; gap:10px;">
+                            <div>
+                                <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                                    <span id="flLotRole" class="badge">A</span>
+                                    <span id="flLotTeam" class="badge" style="background:rgba(255,255,255,0.14); color:#f8fafc; font-weight:800; font-size:0.75rem; padding:3px 8px; border-radius:4px; letter-spacing:0.5px;">-</span>
+                                    <b id="flLotName" style="font-size:1.25rem; color:var(--text-main); font-weight:800;">-</b>
+                                </div>
+                                <div style="font-size:0.75rem; color:var(--text-muted); margin-top:4px;">
+                                    Fair: <b id="flLotFair" style="color:var(--gold);">-</b> • Exp: <span id="flLotPts">-</span> • Fascia: <span id="flLotFascia">-</span>
+                                </div>
+                            </div>
+                            <div style="text-align:right;">
+                                <div style="font-size:0.68rem; color:var(--text-muted); text-transform:uppercase; font-weight:700;">Offerta Corrente</div>
+                                <div style="font-size:1.5rem; font-weight:900; color:var(--gold); line-height:1.1;">
+                                    <span id="flLotPrice">1</span> <small style="font-size:0.85rem;">cr</small>
+                                </div>
+                                <div style="font-size:0.72rem; color:var(--text-muted); margin-top:2px;">
+                                    Offerta da: <b id="flLotBidder" style="color:var(--primary); font-weight:700;">-</b>
+                                </div>
+                                <div id="flLotTimer" style="font-size:0.75rem; color:var(--warning); font-weight:800; margin-top:3px;">⏱️ In corso...</div>
+                            </div>
+                        </div>
+
+                        <!-- Big Advisory Banner -->
+                        <div id="flLotAdvisoryBanner" style="padding:10px 12px; border-radius:6px; background:rgba(16,185,129,0.12); border:1px solid var(--success); margin-bottom:10px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                                <b id="flLotAdvisoryBadge" style="font-size:0.88rem; color:var(--success);">🟢 RILANCIA</b>
+                                <span id="flLotAdvisoryLimit" style="font-size:0.75rem; font-weight:800; color:var(--gold);"></span>
+                            </div>
+                            <div id="flLotAdvisoryReason" style="font-size:0.78rem; color:var(--text-main); line-height:1.35;">-</div>
+                        </div>
+
+                        <!-- Actions bar -->
+                        <div style="display:flex; gap:8px; align-items:center;">
+                            <button class="btn btn-secondary" style="flex:1; padding:6px 10px; font-size:0.75rem; font-weight:700;" onclick="applyLiveLotToManualDraft()">
+                                ⬇️ Pre-imposta nel Battitore Manuale
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MANUAL DRAFT CARD -->
             <div class="card">
                 <div class="card-header">
-                    <div class="card-title">Chiamata & Aggiudicazione Live</div>
+                    <div class="card-title">Chiamata & Aggiudicazione Manuale</div>
                     <div style="font-size:0.75rem; color:var(--text-muted);">Assegnati: <span id="draftedCount" style="color:var(--success); font-weight:700;">0</span>/<span id="totalLeagueSlotsLabel">290</span></div>
                 </div>
 
@@ -3852,9 +4044,9 @@ HTML_TEMPLATE = """
 
     <!-- Bottom Navigation -->
     <nav class="bottom-nav">
-        <button class="nav-item" id="botNav-draft" onclick="switchTab('draft')" style="display:none;">
-            <svg class="nav-svg" viewBox="0 0 24 24"><path d="m14 7 3 3m-9.5 7.5 7-7m-5-5 3.5-3.5a2.121 2.121 0 0 1 3 3L12.5 5.5m-5 5L2 16l6 6 5.5-5.5"></path></svg>
-            <div>Asta Live</div>
+        <button class="nav-item" id="botNav-draft" onclick="switchTab('draft')">
+            <svg class="nav-svg" style="color:var(--primary);" viewBox="0 0 24 24"><path d="m14 7 3 3m-9.5 7.5 7-7m-5-5 3.5-3.5a2.121 2.121 0 0 1 3 3L12.5 5.5m-5 5L2 16l6 6 5.5-5.5"></path></svg>
+            <div style="color:var(--primary); font-weight:700;">⚡ Asta FL</div>
         </button>
         <button class="nav-item active" id="botNav-targets" onclick="switchTab('targets')">
             <svg class="nav-svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>
@@ -3978,7 +4170,7 @@ HTML_TEMPLATE = """
             document.getElementById('pdTeam').textContent = p.team || '';
 
             // Summary bar
-            document.getElementById('pdFairPrice').textContent = p.price_fair_live || p.price_fair_scaled || p.price_fair_1000;
+            document.getElementById('pdFairPrice').textContent = `${getPlayerFairPrice(p)} cr`;
             document.getElementById('pdVorp').textContent = (p.vorp || 0).toFixed(1);
             document.getElementById('pdScore').textContent = (p.score || 0).toFixed(1);
             document.getElementById('pdFascia').textContent = p.fascia;
@@ -4279,14 +4471,13 @@ HTML_TEMPLATE = """
             const unlockBtn = document.getElementById('adminUnlockBtn');
             const unlockText = document.getElementById('adminBtnText');
 
+            if (sideBtn) sideBtn.style.display = 'flex';
+            if (botBtn) botBtn.style.display = 'flex';
+
             if (isAdmin) {
-                if (sideBtn) sideBtn.style.display = 'flex';
-                if (botBtn) botBtn.style.display = 'flex';
                 if (unlockBtn) unlockBtn.classList.add('unlocked');
                 if (unlockText) unlockText.textContent = 'Battitore (Attivo)';
             } else {
-                if (sideBtn) sideBtn.style.display = 'none';
-                if (botBtn) botBtn.style.display = 'none';
                 if (unlockBtn) unlockBtn.classList.remove('unlocked');
                 if (unlockText) unlockText.textContent = 'Battitore';
             }
@@ -4411,8 +4602,41 @@ HTML_TEMPLATE = """
         let leagueBudget = 1000;
         let leagueRosterStructure = { P: 4, D: 9, C: 9, A: 7 };
 
+        function getPlayerFairPrice(p, budget) {
+            if (!p) return 1;
+            const b = budget || (typeof auctionState !== 'undefined' && auctionState && auctionState.budget_total) || (typeof leagueBudget !== 'undefined' ? leagueBudget : 500);
+
+            // If player object has _budget_scale from API matching this budget
+            if (p._budget_scale !== undefined && Math.round(p._budget_scale * 1000) === b) {
+                return p.price_fair_live || p.price_fair_scaled || (b === 500 ? (p.price_fair_500 || Math.round(p.price_fair_1000 * 0.5)) : p.price_fair_1000);
+            }
+
+            // Accurate benchmark for 500 cr
+            if (b === 500) {
+                if (p.price_fair_500) return p.price_fair_500;
+                if (p.price_fair_1000) return Math.max(1, Math.round(p.price_fair_1000 * 0.5));
+            }
+
+            // Accurate benchmark for 1000 cr
+            if (b === 1000) {
+                if (p.price_fair_1000) return p.price_fair_1000;
+            }
+
+            // Proportional scaling for any custom budget
+            let base1000 = p.price_fair_1000;
+            if (!base1000) {
+                if (p._budget_scale && p._budget_scale !== 1.0) {
+                    base1000 = Math.round((p.price_fair_scaled || p.price_fair_live || 1) / p._budget_scale);
+                } else {
+                    base1000 = p.price_fair_scaled || p.price_fair_live || 1;
+                }
+            }
+            return Math.max(1, Math.round(base1000 * (b / 1000.0)));
+        }
+
         async function fetchPlayers() {
-            const res = await fetch('/api/players');
+            const b = (typeof auctionState !== 'undefined' && auctionState && auctionState.budget_total) || (typeof leagueBudget !== 'undefined' ? leagueBudget : 500);
+            const res = await fetch(`/api/players?budget=${b}`);
             const data = await res.json();
             allPlayers = data.players || [];
             slotFramework = data.slot_framework || slotFramework;
@@ -4469,11 +4693,6 @@ HTML_TEMPLATE = """
         }
 
         function switchTab(tabId) {
-            // Guard: Draft tab requires admin
-            if (tabId === 'draft' && !isAdmin) {
-                return;
-            }
-
             document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.sidebar-nav-btn').forEach(el => el.classList.remove('active'));
@@ -4582,7 +4801,7 @@ HTML_TEMPLATE = """
                             <span class="badge badge-${p.role}">${p.role}</span>
                             <b>${p.player}</b> <small style="color:var(--text-muted)">(${p.team})</small>
                         </div>
-                        <div style="font-weight:800; color:var(--gold);">${p.price_fair_live || p.price_fair_scaled || p.price_fair_1000} cr</div>
+                        <div style="font-weight:800; color:var(--gold);">${getPlayerFairPrice(p)} cr</div>
                     </div>
                 `).join('');
                 box.style.display = 'block';
@@ -4601,7 +4820,7 @@ HTML_TEMPLATE = """
             document.getElementById('selRole').textContent = selectedPlayer.role;
             document.getElementById('selName').textContent = selectedPlayer.player;
             document.getElementById('selTeam').textContent = `(${selectedPlayer.team})`;
-            const livePrice = selectedPlayer.price_fair_live || selectedPlayer.price_fair_scaled || selectedPlayer.price_fair_1000;
+            const livePrice = getPlayerFairPrice(selectedPlayer);
             document.getElementById('selFair').textContent = `Fair Price Live: ${livePrice} cr`;
             document.getElementById('selSurplus').innerHTML = `Surplus: <span style="color:${selectedPlayer.surplus_value > 0 ? 'var(--success)' : 'var(--danger)'}">${selectedPlayer.surplus_value > 0 ? '+' : ''}${selectedPlayer.surplus_value} cr</span>`;
             card.style.display = 'block';
@@ -5082,7 +5301,7 @@ HTML_TEMPLATE = """
 
             const targets = loadUserTargets();
             const existing = targets[p.player] || {};
-            const fair = p.price_fair_live || p.price_fair_scaled || p.price_fair_1000;
+            const fair = getPlayerFairPrice(p);
 
             document.getElementById('targetModalPlayerName').textContent = p.player;
             document.getElementById('targetModalRole').className = 'badge badge-' + p.role;
@@ -5287,7 +5506,7 @@ HTML_TEMPLATE = """
             // Synchronize with userTargets
             const targets = loadUserTargets();
             const p = allPlayers.find(x => x.player === playerName) || {};
-            const fair = p.price_fair_live || p.price_fair_scaled || p.price_fair_1000 || 1;
+            const fair = getPlayerFairPrice(p);
             if (!targets[playerName]) {
                 targets[playerName] = {
                     player: playerName,
@@ -5384,8 +5603,8 @@ HTML_TEMPLATE = """
                 const bAssignedOther = (assignedMap[b.player] && assignedMap[b.player].team_id !== activeProfileId) ? 1 : 0;
                 if (aAssignedOther !== bAssignedOther) return aAssignedOther - bAssignedOther;
 
-                const fairA = a.price_fair_live || a.price_fair_scaled || a.price_fair_1000 || 1;
-                const fairB = b.price_fair_live || b.price_fair_scaled || b.price_fair_1000 || 1;
+                const fairA = getPlayerFairPrice(a);
+                const fairB = getPlayerFairPrice(b);
                 if (fairB !== fairA) return fairB - fairA;
                 return (b.vorp || 0) - (a.vorp || 0);
             });
@@ -5395,7 +5614,7 @@ HTML_TEMPLATE = """
             }
 
             return candidates.slice(0, 40).map(p => {
-                const fair = p.price_fair_live || p.price_fair_scaled || p.price_fair_1000 || 1;
+                const fair = getPlayerFairPrice(p);
                 const isAssigned = (p.player in assignedMap) || p.is_assigned;
                 const isSlotSelected = slots[`${role}_${slotIdx}`] === p.player;
                 const isStarter = p.is_starter_2627 === 1 || p.is_starter_2627 === true || p.is_starter_2627 === "1";
@@ -5457,7 +5676,7 @@ HTML_TEMPLATE = """
                     const playerName = slots[`${r}_${i}`];
                     if (playerName) {
                         const p = allPlayers.find(x => x.player === playerName) || {};
-                        const fair = p.price_fair_live || p.price_fair_scaled || p.price_fair_1000 || 1;
+                        const fair = getPlayerFairPrice(p, activeBudget);
                         const userT = targets[playerName] || {};
                         const maxP = userT.max_price || fair;
                         const vorpVal = parseFloat(p.vorp || 0);
@@ -5590,7 +5809,7 @@ HTML_TEMPLATE = """
 
                     if (playerName) {
                         const p = allPlayers.find(x => x.player === playerName) || { player: playerName, role: role, team: '' };
-                        const fair = p.price_fair_live || p.price_fair_scaled || p.price_fair_1000 || 1;
+                        const fair = getPlayerFairPrice(p, activeBudget);
                         const userT = targets[playerName] || {};
                         const maxP = userT.max_price || fair;
                         const isAssigned = (playerName in assignedMap) || p.is_assigned;
@@ -6022,6 +6241,7 @@ HTML_TEMPLATE = """
                 }
             }
             const scaleRatio = activeBudget / ((tactic && tactic.budget_base) || 1000.0);
+            const budgetScale1000 = activeBudget / 1000.0;
             const container = document.getElementById('strategySlotsContainer');
 
             const targetSlots = loadTargetSlots();
@@ -6050,7 +6270,7 @@ HTML_TEMPLATE = """
                         }
                     }
 
-                    const fair = p.price_fair_live || p.price_fair_scaled || p.price_fair_1000;
+                    const fair = getPlayerFairPrice(p, activeBudget);
                     if (role === 'P') {
                         if (slotCfg.fascia === 1) {
                             return p.fascia === 1;
@@ -6066,8 +6286,8 @@ HTML_TEMPLATE = """
                         return p.fascia === slotCfg.fascia;
                     }
                     if (slotCfg.slot === 1) return fair >= Math.max(2, Math.round(scaledMax * 0.40));
-                    if (slotCfg.slot === 2) return fair <= Math.round(scaledMax * 1.35) && fair >= Math.max(2, Math.round(15 * scaleRatio));
-                    if (slotCfg.slot === 3) return fair <= Math.round(scaledMax * 1.4) && fair >= Math.max(1, Math.round(8 * scaleRatio));
+                    if (slotCfg.slot === 2) return fair <= Math.round(scaledMax * 1.35) && fair >= Math.max(2, Math.round(15 * budgetScale1000));
+                    if (slotCfg.slot === 3) return fair <= Math.round(scaledMax * 1.4) && fair >= Math.max(1, Math.round(8 * budgetScale1000));
                     return fair <= scaledMax * 2;
                 }).sort((a,b) => {
                     // Prioritize teammates if acquiring goalkeepers for existing club block
@@ -6082,8 +6302,8 @@ HTML_TEMPLATE = """
                     const bTarget = b.player in userTargets ? 1 : 0;
                     if (aTarget !== bTarget) return bTarget - aTarget;
 
-                    const aFair = a.price_fair_live || a.price_fair_scaled || a.price_fair_1000;
-                    const bFair = b.price_fair_live || b.price_fair_scaled || b.price_fair_1000;
+                    const aFair = getPlayerFairPrice(a, activeBudget);
+                    const bFair = getPlayerFairPrice(b, activeBudget);
 
                     if (currentTacticId === 'modificatore_ferro' && role === 'D') {
                         return (b.pts_exp * 1.5 + b.starts_2627 * 5) - (a.pts_exp * 1.5 + a.starts_2627 * 5);
@@ -6158,7 +6378,7 @@ HTML_TEMPLATE = """
                                                 <small style="color:var(--text-muted); font-size:0.82rem; flex-shrink:0;">(${c.team})</small>
                                             </div>
                                             <div style="text-align:right; flex-shrink:0;">
-                                                <span style="color:var(--gold); font-weight:800; font-size:1rem;">${c.price_fair_live || c.price_fair_scaled || c.price_fair_1000} cr</span>
+                                                <span style="color:var(--gold); font-weight:800; font-size:1rem;">${getPlayerFairPrice(c, activeBudget)} cr</span>
                                                 <span style="color:var(--text-muted); font-size:0.8rem; margin-left:4px;">(${c.pts_exp} pts)</span>
                                             </div>
                                         </div>
@@ -6738,12 +6958,12 @@ HTML_TEMPLATE = """
                 } else if (sortBy === 'mfv_desc') {
                     return (parseFloat(b.mfv) || 0) - (parseFloat(a.mfv) || 0);
                 } else if (sortBy === 'fair_desc') {
-                    const aFair = a.price_fair_live || a.price_fair_scaled || a.price_fair_1000;
-                    const bFair = b.price_fair_live || b.price_fair_scaled || b.price_fair_1000;
+                    const aFair = getPlayerFairPrice(a, activeBudget);
+                    const bFair = getPlayerFairPrice(b, activeBudget);
                     return bFair - aFair;
                 } else if (sortBy === 'fair_asc') {
-                    const aFair = a.price_fair_live || a.price_fair_scaled || a.price_fair_1000;
-                    const bFair = b.price_fair_live || b.price_fair_scaled || b.price_fair_1000;
+                    const aFair = getPlayerFairPrice(a, activeBudget);
+                    const bFair = getPlayerFairPrice(b, activeBudget);
                     return aFair - bFair;
                 } else if (sortBy === 'pts_desc') {
                     return (parseFloat(b.pts_exp) || 0) - (parseFloat(a.pts_exp) || 0);
@@ -6774,8 +6994,8 @@ HTML_TEMPLATE = """
                 const isTarget = p.player in userTargets;
                 const targetInfo = userTargets[p.player] || {};
 
-                const fairLive = p.price_fair_live || p.price_fair_scaled || p.price_fair_1000;
-                const fairScaled = p.price_fair_scaled || p.price_fair_1000;
+                const fairLive = getPlayerFairPrice(p, activeBudget);
+                const fairScaled = fairLive;
 
                 const isStarter = p.is_starter_2627 === 1 || p.is_starter_2627 === true || p.is_starter_2627 === "1";
                 const medDays = (p.medical && p.medical.days_lost_3y) || 0;
@@ -6855,6 +7075,303 @@ HTML_TEMPLATE = """
             renderStrategyTab();
             renderTargetsTab();
             renderListone();
+            initFantaLabLiveSniffer();
+        }
+
+        /* ─────────────────────────────────────────────────────────────
+           FANTALAB LIVE ROOM SNIFFER (BETA) & ADVISORY
+        ───────────────────────────────────────────────────────────── */
+        let flLiveSnifferActive = false;
+        let flLivePollTimer = null;
+        let flCountdownTimer = null;
+        let flCurrentLotData = null;
+
+        function updateLiveCountdown() {
+            if (!flCurrentLotData) return;
+            const elTimer = document.getElementById('flLotTimer');
+            if (!elTimer) return;
+
+            const timeToPass = flCurrentLotData.time_to_pass;
+            const lastBidTime = flCurrentLotData.last_bid_time;
+            const shard = flCurrentLotData.shard;
+            const shardBadge = (shard !== undefined && shard !== null) ? ` [Shard ${shard}]` : '';
+
+            if (timeToPass !== null && timeToPass !== undefined) {
+                let secLeft;
+                if (lastBidTime && typeof lastBidTime === 'number' && lastBidTime > 0) {
+                    const elapsed = (Date.now() - lastBidTime) / 1000;
+                    secLeft = Math.max(0, Math.ceil(timeToPass - elapsed));
+                } else if (flCurrentLotData._receivedAt) {
+                    const elapsed = (Date.now() - flCurrentLotData._receivedAt) / 1000;
+                    secLeft = Math.max(0, Math.ceil(timeToPass - elapsed));
+                } else {
+                    secLeft = timeToPass;
+                }
+
+                if (secLeft <= 0) {
+                    elTimer.innerHTML = `<span style="color:var(--danger); font-weight:800;">⏱️ 0s — Ultima chiamata!</span>${shardBadge}`;
+                } else if (secLeft <= 3) {
+                    elTimer.innerHTML = `<span style="color:var(--danger); font-weight:800;">⏱️ ${secLeft}s rimasti (BATTE!)</span>${shardBadge}`;
+                } else {
+                    elTimer.innerHTML = `<span style="color:var(--warning); font-weight:800;">⏱️ ${secLeft}s rimasti</span>${shardBadge}`;
+                }
+            } else {
+                elTimer.innerHTML = `⏱️ Offerta aperta${shardBadge}`;
+            }
+        }
+
+        function initFantaLabLiveSniffer() {
+            const savedRoomId = localStorage.getItem('fantalab_room_id') || '';
+            const savedShard = localStorage.getItem('fantalab_shard') || 'auto';
+            const inputRoom = document.getElementById('flRoomId');
+            const selectShard = document.getElementById('flShard');
+            if (inputRoom && savedRoomId) inputRoom.value = savedRoomId;
+            if (selectShard && savedShard) selectShard.value = savedShard;
+        }
+
+        function onFantaLabRoomConfigChange() {
+            const inputRoom = document.getElementById('flRoomId');
+            const selectShard = document.getElementById('flShard');
+            if (inputRoom) localStorage.setItem('fantalab_room_id', inputRoom.value.trim());
+            if (selectShard) localStorage.setItem('fantalab_shard', selectShard.value);
+            if (flLiveSnifferActive) {
+                pollFantaLabLiveSnapshot();
+            }
+        }
+
+        function toggleFantaLabLiveSniffer() {
+            flLiveSnifferActive = !flLiveSnifferActive;
+            const statusText = document.getElementById('flLiveStatusText');
+            const toggleBtn = document.getElementById('flToggleBtn');
+            const monitorBox = document.getElementById('flLiveMonitorBox');
+
+            if (flLiveSnifferActive) {
+                if (statusText) {
+                    statusText.textContent = 'ATTIVO';
+                    statusText.style.color = 'var(--success)';
+                }
+                if (toggleBtn) {
+                    toggleBtn.textContent = '⏹ Ferma Ascolto';
+                    toggleBtn.className = 'btn btn-danger';
+                }
+                if (monitorBox) monitorBox.style.display = 'block';
+
+                pollFantaLabLiveSnapshot();
+                if (flLivePollTimer) clearInterval(flLivePollTimer);
+                flLivePollTimer = setInterval(pollFantaLabLiveSnapshot, 1500);
+            } else {
+                if (statusText) {
+                    statusText.textContent = 'DISATTIVO';
+                    statusText.style.color = 'var(--text-muted)';
+                }
+                if (toggleBtn) {
+                    toggleBtn.textContent = '▶ Avvia Ascolto';
+                    toggleBtn.className = 'btn btn-secondary';
+                }
+                if (monitorBox) monitorBox.style.display = 'none';
+                if (flLivePollTimer) {
+                    clearInterval(flLivePollTimer);
+                    flLivePollTimer = null;
+                }
+                if (flCountdownTimer) {
+                    clearInterval(flCountdownTimer);
+                    flCountdownTimer = null;
+                }
+            }
+        }
+
+        async function pollFantaLabLiveSnapshot() {
+            if (!flLiveSnifferActive) return;
+            const inputRoom = document.getElementById('flRoomId');
+            const selectShard = document.getElementById('flShard');
+            let roomId = inputRoom ? inputRoom.value.trim() : '';
+            const shard = selectShard ? selectShard.value : 'auto';
+
+            const idleView = document.getElementById('flLiveIdleView');
+            const activeView = document.getElementById('flLiveActiveView');
+            const idleTitle = document.getElementById('flLiveIdleTitle');
+            const idleSub = document.getElementById('flLiveIdleSubtitle');
+
+            // Auto clean URL if pasted as full link
+            if (roomId.includes('http') || roomId.includes('fantalab.it')) {
+                try {
+                    const u = new URL(roomId);
+                    const qAsta = u.searchParams.get('asta');
+                    if (qAsta) {
+                        roomId = qAsta;
+                        if (inputRoom) inputRoom.value = qAsta;
+                        localStorage.setItem('fantalab_room_id', qAsta);
+                    }
+                } catch(e) {}
+            }
+
+            if (!roomId) {
+                if (idleView) idleView.style.display = 'block';
+                if (activeView) activeView.style.display = 'none';
+                if (idleTitle) idleTitle.textContent = 'Nessun Room ID specificato';
+                if (idleSub) idleSub.textContent = "Inserisci il Room ID o il link asta di FantaLab (app.fantalab.it/asta?asta=...)";
+                return;
+            }
+
+            try {
+                const userTargets = loadUserTargets();
+                const params = new URLSearchParams({
+                    room_id: roomId,
+                    shard: shard,
+                    profile_id: String(activeProfileId),
+                    user_targets: JSON.stringify(userTargets)
+                });
+
+                const res = await fetch('/api/live/snapshot?' + params.toString());
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const data = await res.json();
+
+                if (data.status === 'warning') {
+                    flCurrentLotData = null;
+                    if (flCountdownTimer) {
+                        clearInterval(flCountdownTimer);
+                        flCountdownTimer = null;
+                    }
+                    if (idleView) idleView.style.display = 'block';
+                    if (activeView) activeView.style.display = 'none';
+                    if (idleTitle) idleTitle.innerHTML = `<span style="color:var(--warning);">⚠️ Link di invito rilevato</span>`;
+                    if (idleSub) idleSub.textContent = data.message;
+                    return;
+                }
+
+                if (data.status === 'active' && data.lot) {
+                    const lot = data.lot;
+                    lot.shard = data.shard;
+                    lot._receivedAt = Date.now();
+                    flCurrentLotData = lot;
+
+                    if (idleView) idleView.style.display = 'none';
+                    if (activeView) activeView.style.display = 'block';
+
+                    const elRole = document.getElementById('flLotRole');
+                    const elName = document.getElementById('flLotName');
+                    const elTeam = document.getElementById('flLotTeam');
+                    const elFair = document.getElementById('flLotFair');
+                    const elPts = document.getElementById('flLotPts');
+                    const elFascia = document.getElementById('flLotFascia');
+                    const elPrice = document.getElementById('flLotPrice');
+                    const elBidder = document.getElementById('flLotBidder');
+
+                    if (elRole) {
+                        elRole.textContent = lot.role || '?';
+                        elRole.className = 'badge role-' + (lot.role ? lot.role.toLowerCase() : 'p');
+                    }
+                    if (elTeam) {
+                        elTeam.textContent = lot.team || '-';
+                        elTeam.style.display = lot.team ? 'inline-block' : 'none';
+                    }
+                    if (elName) elName.textContent = lot.player_name;
+                    if (elFair) elFair.textContent = `${Math.round(lot.fair_price)} cr`;
+                    if (elPts) elPts.textContent = `${lot.pts_exp} pt`;
+                    if (elFascia) elFascia.textContent = `F${lot.fascia || 3}`;
+                    if (elPrice) elPrice.textContent = lot.current_price || lot.price || 1;
+
+                    if (elBidder) {
+                        let bidderText = '-';
+                        try {
+                            if (lot.bidder_team_id) {
+                                const teamsList = (typeof auctionState !== 'undefined' && auctionState && auctionState.teams) 
+                                    ? auctionState.teams 
+                                    : ((typeof currentLeagueSettings !== 'undefined' && currentLeagueSettings && currentLeagueSettings.teams) ? currentLeagueSettings.teams : []);
+                                const matchTeam = teamsList.find(t => String(t.id) === String(lot.bidder_team_id) || (t.name && t.name.toLowerCase() === String(lot.bidder_team_id).toLowerCase()));
+                                if (matchTeam) {
+                                    bidderText = matchTeam.name;
+                                } else if (lot.bidder_team_id.length > 8) {
+                                    bidderText = 'Fantasquadra ' + lot.bidder_team_id.slice(0, 6).toUpperCase();
+                                } else {
+                                    bidderText = lot.bidder_team_id;
+                                }
+                            }
+                        } catch (e) {
+                            bidderText = lot.bidder_team_id ? 'Fantasquadra ' + lot.bidder_team_id.slice(0, 6).toUpperCase() : '-';
+                        }
+                        elBidder.textContent = bidderText;
+                    }
+
+                    updateLiveCountdown();
+                    if (!flCountdownTimer) {
+                        flCountdownTimer = setInterval(updateLiveCountdown, 250);
+                    }
+
+                    // Advisory Banner
+                    const banner = document.getElementById('flLotAdvisoryBanner');
+                    const badge = document.getElementById('flLotAdvisoryBadge');
+                    const limit = document.getElementById('flLotAdvisoryLimit');
+                    const reason = document.getElementById('flLotAdvisoryReason');
+
+                    const adv = lot.advisory || {};
+                    if (badge) {
+                        badge.textContent = adv.badge || '🟢 RILANCIA';
+                        badge.style.color = adv.color || 'var(--success)';
+                    }
+                    if (limit) {
+                        const limVal = adv.max_limit || adv.max_limit_cr;
+                        limit.textContent = limVal ? `Tetto Consigliato: ${limVal} cr` : '';
+                    }
+                    if (reason) {
+                        reason.textContent = adv.text || '';
+                    }
+                    if (banner) {
+                        banner.style.borderColor = adv.color || 'var(--primary)';
+                    }
+                } else {
+                    flCurrentLotData = null;
+                    if (flCountdownTimer) {
+                        clearInterval(flCountdownTimer);
+                        flCountdownTimer = null;
+                    }
+                    if (idleView) idleView.style.display = 'block';
+                    if (activeView) activeView.style.display = 'none';
+                    if (idleTitle) idleTitle.textContent = data.message || 'In ascolto sulla stanza...';
+                    const shardInfo = data.shard ? ` • Connesso su Shard: ${data.shard}` : '';
+                    if (idleSub) idleSub.textContent = `Room ID: ${data.room_id || roomId}${shardInfo} • In attesa di un calciatore in battuta.`;
+                }
+            } catch (err) {
+                console.warn('FantaLab Live Poll error:', err);
+                if (idleView) idleView.style.display = 'block';
+                if (activeView) activeView.style.display = 'none';
+                if (idleTitle) idleTitle.textContent = 'Connessione stanza in corso...';
+                if (idleSub) idleSub.textContent = 'Tentativo di lettura RTDB in background...';
+            }
+        }
+
+        function applyLiveLotToManualDraft() {
+            if (!flCurrentLotData) {
+                showToast('Nessun calciatore attivo nel bando live.', 'warning');
+                return;
+            }
+            const name = flCurrentLotData.player_name;
+            const price = flCurrentLotData.current_price || flCurrentLotData.price || 1;
+
+            let match = allPlayers.find(p => p.player.toLowerCase() === name.toLowerCase());
+            if (!match) {
+                match = allPlayers.find(p => p.player.toLowerCase().includes(name.toLowerCase()) || name.toLowerCase().includes(p.player.toLowerCase()));
+            }
+
+            if (match) {
+                selectPlayer(match.player);
+            } else {
+                const search = document.getElementById('playerSearch');
+                if (search) {
+                    search.value = name;
+                    onSearchInput({ target: search });
+                }
+            }
+
+            const bidInput = document.getElementById('bidPrice');
+            if (bidInput) bidInput.value = price;
+
+            // Scroll down smoothly to the manual draft card
+            const targetCard = document.getElementById('selectedPlayerCard') || document.getElementById('playerSearch');
+            if (targetCard) {
+                targetCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+            showToast(`Pre-impostato ${name} (${price} cr) nel battitore!`, 'success');
         }
 
         window.onload = init;
