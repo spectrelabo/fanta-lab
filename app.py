@@ -7,6 +7,7 @@ Clean, professional interface with local profile isolation, custom targets, Fant
 import os
 import sys
 import json
+import time
 import re
 import pandas as pd
 import requests
@@ -115,6 +116,8 @@ if IS_PERSONAL:
             DEFAULT_TEAMS = [{"id": i+1, "name": name, "is_me": i == 0} for i, name in enumerate(names)]
 
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", ADMIN_PASSWORD)
+ADMIN_PIN = os.environ.get("ADMIN_PIN", "7777")
+LEAGUE_PIN = os.environ.get("LEAGUE_PIN", "2026")
 TOTAL_ROSTER_SIZE = sum(DEFAULT_ROSTER_SLOTS.values())
 
 # ──────────────────────────────────────────────────────────────────────
@@ -447,9 +450,100 @@ def load_dataset():
     return df
 
 
+# ──────────────────────────────────────────────────────────────────────
+# CLOUD REDIS STATE & LEAGUE SESSION SYNCHRONIZATION (UPSTASH)
+# ──────────────────────────────────────────────────────────────────────
+_REDIS_CACHE = {}
+_REDIS_CACHE_TS = {}
+
+def _get_upstash_credentials():
+    url = os.environ.get("UPSTASH_REDIS_REST_URL") or os.environ.get("KV_REST_API_URL")
+    token = os.environ.get("UPSTASH_REDIS_REST_TOKEN") or os.environ.get("KV_REST_API_TOKEN")
+    if url and token:
+        return url.rstrip("/"), token
+    return None, None
+
+def _redis_get(key, max_age_seconds=1.5):
+    """
+    Fetches JSON data from Upstash Redis with a short in-memory cache
+    to avoid burning through rate limits during live auction multi-user polling.
+    """
+    now = time.time()
+    if key in _REDIS_CACHE and (now - _REDIS_CACHE_TS.get(key, 0)) < max_age_seconds:
+        return _REDIS_CACHE[key]
+
+    url, token = _get_upstash_credentials()
+    if not url or not token:
+        return None
+    try:
+        res = requests.post(
+            url,
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            json=["GET", key],
+            timeout=2.2
+        )
+        if res.status_code == 200:
+            raw = res.json().get("result")
+            if raw:
+                val = json.loads(raw)
+                _REDIS_CACHE[key] = val
+                _REDIS_CACHE_TS[key] = now
+                return val
+    except Exception as e:
+        print(f"[Upstash] GET failed for key {key}: {e}")
+    return _REDIS_CACHE.get(key)
+
+def _redis_set(key, value):
+    """Saves JSON data to Upstash Redis and updates local memory cache immediately."""
+    now = time.time()
+    _REDIS_CACHE[key] = value
+    _REDIS_CACHE_TS[key] = now
+
+    url, token = _get_upstash_credentials()
+    if not url or not token:
+        return False
+    try:
+        payload = json.dumps(value, ensure_ascii=False)
+        res = requests.post(
+            url,
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            json=["SET", key, payload],
+            timeout=2.2
+        )
+        return res.status_code == 200
+    except Exception as e:
+        print(f"[Upstash] SET failed for key {key}: {e}")
+        return False
+
+def _redis_del(key):
+    _REDIS_CACHE.pop(key, None)
+    _REDIS_CACHE_TS.pop(key, None)
+    url, token = _get_upstash_credentials()
+    if not url or not token:
+        return False
+    try:
+        res = requests.post(
+            url,
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            json=["DEL", key],
+            timeout=2.2
+        )
+        return res.status_code == 200
+    except Exception as e:
+        print(f"[Upstash] DEL failed for key {key}: {e}")
+        return False
+
+
 def load_league_settings():
-    """Load league settings from file, in-memory cache, or return defaults from config cascade."""
+    """Load league settings from Upstash Redis, file, in-memory cache, or return defaults."""
     global _IN_MEMORY_SETTINGS
+    # 1. Check Redis first for multi-client synchronization
+    redis_settings = _redis_get("fanta_shared_settings", max_age_seconds=2.0)
+    if redis_settings and isinstance(redis_settings, dict) and "budget" in redis_settings and "roster_slots" in redis_settings and "teams" in redis_settings:
+        _IN_MEMORY_SETTINGS = redis_settings
+        return redis_settings
+
+    # 2. Check local file
     if os.path.exists(SETTINGS_PATH):
         try:
             with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
@@ -463,17 +557,20 @@ def load_league_settings():
     if _IN_MEMORY_SETTINGS is not None:
         return _IN_MEMORY_SETTINGS
 
-    return {
+    defaults = {
         "budget": DEFAULT_BUDGET,
         "roster_slots": DEFAULT_ROSTER_SLOTS,
         "teams": DEFAULT_TEAMS
     }
+    _IN_MEMORY_SETTINGS = defaults
+    return defaults
 
 
 def save_league_settings(settings):
-    """Persist league settings to file and in-memory cache."""
+    """Persist league settings to Upstash Redis, file, and in-memory cache."""
     global _IN_MEMORY_SETTINGS
     _IN_MEMORY_SETTINGS = settings
+    _redis_set("fanta_shared_settings", settings)
     try:
         with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
             json.dump(settings, f, ensure_ascii=False, indent=2)
@@ -556,7 +653,7 @@ def recalculate_team_metrics(team, budget_total, roster_structure=None):
 
 def load_state():
     """
-    Load auction state from file or in-memory cache and automatically synchronize with current league settings.
+    Load auction state from Upstash Redis, file, or in-memory cache and automatically synchronize with current league settings.
     """
     global _IN_MEMORY_STATE
     settings = load_league_settings()
@@ -565,13 +662,18 @@ def load_state():
     settings_teams = settings.get("teams", DEFAULT_TEAMS)
 
     state = None
-    if os.path.exists(STATE_PATH):
+    # 1. Try Upstash Redis first for real-time multi-device shared session
+    state = _redis_get("fanta_shared_state", max_age_seconds=1.5)
+
+    # 2. Try local file if Redis returned nothing
+    if state is None and os.path.exists(STATE_PATH):
         try:
             with open(STATE_PATH, "r", encoding="utf-8") as f:
                 state = json.load(f)
         except Exception:
             state = None
 
+    # 3. Try in-memory
     if state is None and _IN_MEMORY_STATE is not None:
         state = _IN_MEMORY_STATE
 
@@ -610,12 +712,15 @@ def load_state():
 
     initial = get_initial_state()
     _IN_MEMORY_STATE = initial
+    _redis_set("fanta_shared_state", initial)
     return initial
 
 
 def save_state(state):
+    """Persist auction state to Upstash Redis, file, and in-memory cache."""
     global _IN_MEMORY_STATE
     _IN_MEMORY_STATE = state
+    _redis_set("fanta_shared_state", state)
     try:
         with open(STATE_PATH, "w", encoding="utf-8") as f:
             json.dump(state, f, ensure_ascii=False, indent=2)
@@ -779,9 +884,49 @@ def api_save_settings():
 def api_auth_admin():
     data = request.json or {}
     pwd = str(data.get("password", "")).strip()
-    if pwd == ADMIN_PASSWORD:
+    if pwd in [ADMIN_PASSWORD, ADMIN_PIN]:
         return jsonify({"success": True, "is_admin": True})
     return jsonify({"error": "Password errata"}), 401
+
+
+@app.route("/api/auth/login", methods=["POST"])
+def api_auth_login():
+    data = request.json or {}
+    pin = str(data.get("pin", "")).strip()
+    try:
+        team_id = int(data.get("team_id", 1))
+    except (ValueError, TypeError):
+        team_id = 1
+
+    is_admin = (pin in [ADMIN_PIN, ADMIN_PASSWORD])
+    is_participant = (pin == LEAGUE_PIN or is_admin)
+
+    if not is_participant:
+        return jsonify({"authenticated": False, "error": "PIN non corretto. Inserisci il PIN di Lega o il PIN Admin."}), 401
+
+    role = "admin" if is_admin else "participant"
+    return jsonify({
+        "authenticated": True,
+        "role": role,
+        "is_admin": is_admin,
+        "team_id": team_id
+    })
+
+
+@app.route("/api/session/reset", methods=["POST"])
+def api_session_reset():
+    data = request.json or {}
+    pin = str(data.get("admin_pin", "")).strip()
+    if pin not in [ADMIN_PIN, ADMIN_PASSWORD]:
+        return jsonify({"error": "PIN Admin non valido. Reset non autorizzato."}), 403
+
+    initial_state = get_initial_state()
+    save_state(initial_state)
+    return jsonify({
+        "success": True,
+        "message": "Nuova sessione d'asta avviata! Rose e crediti azzerati.",
+        "state": initial_state
+    })
 
 
 def compute_market_inflation(df, state):
@@ -3011,14 +3156,20 @@ HTML_TEMPLATE = """
                         <span class="hide-mobile">Lega</span>
                     </button>
 
+                    <button id="btnAdminResetSession" class="profile-btn" onclick="openResetSessionModal()" style="display:none; border:1px solid #ef4444; background:rgba(239,68,68,0.15); color:#fca5a5; font-weight:700;" title="Azzera asta e avvia nuova sessione condivisa">
+                        <span>⚠️</span>
+                        <span class="hide-mobile">Nuova Sessione</span>
+                    </button>
+
                     <button id="adminUnlockBtn" class="admin-badge-btn" onclick="openAdminModal()">
                         <svg class="nav-svg" style="width:13px; height:13px;" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
                         <span id="adminBtnText">Battitore</span>
                     </button>
 
-                    <button class="profile-btn" onclick="openProfileModal()">
+                    <button class="profile-btn" onclick="openProfileModal()" title="Gestione Profilo / Cambia Fantasquadra">
                         <svg class="nav-svg" style="width:14px; height:14px;" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
                         <span id="headerProfileName">Io</span>
+                        <span id="headerUserRoleBadge" style="font-size:0.62rem; padding:1px 5px; border-radius:3px; background:rgba(56,189,248,0.2); color:var(--primary); font-weight:800; margin-left:4px;">LIVE</span>
                     </button>
                 </div>
             </header>
@@ -3651,8 +3802,9 @@ HTML_TEMPLATE = """
             <label style="font-size:0.78rem; color:var(--text-muted); font-weight:700; display:block; margin-bottom:4px;">SQUADRA ATTIVA:</label>
             <select id="profileTeamSelect" onchange="changeActiveProfile(this.value)"></select>
 
-            <div style="margin-top:14px; padding-top:14px; border-top:1px solid var(--border);">
-                <button class="btn btn-secondary" onclick="closeProfileModal()">Conferma e Chiudi</button>
+            <div style="margin-top:14px; padding-top:14px; border-top:1px solid var(--border); display:flex; gap:8px;">
+                <button class="btn btn-secondary" style="width:50%;" onclick="closeProfileModal()">Conferma</button>
+                <button class="btn" style="width:50%; background:rgba(239,68,68,0.15); border:1px solid #ef4444; color:#fca5a5; font-weight:700;" onclick="logoutSession()">Disconnetti</button>
             </div>
         </div>
     </div>
@@ -3996,6 +4148,64 @@ HTML_TEMPLATE = """
             <div style="display:flex; gap:8px; margin-top:8px;">
                 <button class="btn btn-secondary" style="width:40%;" onclick="closeAdminModal()">Annulla</button>
                 <button class="btn btn-primary" style="width:60%;" onclick="submitAdminAuth()">Accedi</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SESSION LOGIN GATE MODAL -->
+    <div id="sessionLoginModal" class="modal-backdrop" style="display:none; z-index:99999; background:rgba(3,4,8,0.92); backdrop-filter:blur(12px);">
+        <div class="modal-box" style="max-width:440px; border:1px solid rgba(56,189,248,0.4); box-shadow:0 0 45px rgba(56,189,248,0.25); text-align:center; padding:28px 24px;">
+            <div style="font-size:2.4rem; margin-bottom:6px;">🏆</div>
+            <div class="modal-title" style="justify-content:center; margin-bottom:4px;">
+                <span style="font-size:1.35rem; font-weight:800; color:var(--text-main); font-family:'Outfit',sans-serif;">Asta Live Condivisa</span>
+            </div>
+            <div style="font-size:0.82rem; color:var(--text-muted); margin-bottom:18px; line-height:1.4;">
+                Tutti i partecipanti sono sincronizzati in tempo reale sulla stessa asta. Seleziona la tua squadra e inserisci il PIN di accesso.
+            </div>
+
+            <div style="text-align:left; margin-bottom:14px;">
+                <label style="font-size:0.75rem; color:var(--text-muted); font-weight:700; display:block; margin-bottom:5px;">LA TUA FANTASQUADRA:</label>
+                <select id="loginTeamSelect" style="width:100%; font-size:0.95rem; font-weight:700; padding:10px 12px; background:#0b111e; border:1px solid var(--border); color:var(--text-main); border-radius:8px; margin-bottom:0;">
+                    <!-- Dynamically populated -->
+                </select>
+            </div>
+
+            <div style="text-align:left; margin-bottom:16px;">
+                <label style="font-size:0.75rem; color:var(--text-muted); font-weight:700; display:block; margin-bottom:5px;">PIN DI ACCESSO (LEGA O ADMIN):</label>
+                <input type="password" id="loginPinInput" placeholder="Inserisci PIN (es. 2026)" style="width:100%; font-size:1.1rem; letter-spacing:2px; text-align:center; font-weight:700; padding:10px 12px; background:#0b111e; border:1px solid var(--border); color:var(--text-main); border-radius:8px; margin-bottom:4px;" onkeypress="if(event.key==='Enter') submitSessionLogin()">
+                <div id="loginErrorMsg" style="display:none; color:#f87171; font-size:0.8rem; margin-top:6px; font-weight:600; text-align:center;"></div>
+            </div>
+
+            <button class="btn btn-primary" style="width:100%; padding:12px; font-size:1rem; font-weight:800; border-radius:8px; margin-top:6px;" onclick="submitSessionLogin()">
+                ⚡ Entra nell'Asta Live
+            </button>
+
+            <div style="margin-top:16px; font-size:0.72rem; color:var(--text-muted); line-height:1.4;">
+                Con il <b>PIN Admin</b> hai accesso completo alla battuta, sniffer e reset sessione.
+            </div>
+        </div>
+    </div>
+
+    <!-- ADMIN RESET SESSION MODAL -->
+    <div id="adminResetSessionModal" class="modal-backdrop" style="display:none; z-index:99999;">
+        <div class="modal-box" style="max-width:440px; border:1px solid #ef4444; box-shadow:0 0 35px rgba(239,68,68,0.25); text-align:center; padding:24px;">
+            <div style="font-size:2.2rem; margin-bottom:6px;">⚠️</div>
+            <div class="modal-title" style="justify-content:center; color:#fca5a5;">
+                <span>Azzera e Inizia Nuova Sessione</span>
+            </div>
+            <div style="font-size:0.83rem; color:var(--text-muted); margin-bottom:16px; line-height:1.4;">
+                Questa operazione cancellerà <b>tutti i calciatori assegnati</b> dal database cloud Upstash e resetterà crediti e rose di tutte le 10 squadre.
+            </div>
+
+            <div style="text-align:left; margin-bottom:16px;">
+                <label style="font-size:0.75rem; color:#fca5a5; font-weight:700; display:block; margin-bottom:5px;">CONFERMA PIN ADMIN:</label>
+                <input type="password" id="resetAdminPinInput" placeholder="PIN Admin (es. 7777)" style="width:100%; font-size:1rem; letter-spacing:2px; text-align:center; font-weight:700; margin-bottom:4px;" onkeypress="if(event.key==='Enter') executeAdminResetSession()">
+                <div id="resetErrorMsg" style="display:none; color:#f87171; font-size:0.8rem; margin-top:6px; font-weight:600; text-align:center;"></div>
+            </div>
+
+            <div style="display:flex; gap:8px;">
+                <button class="btn btn-secondary" style="width:40%;" onclick="closeResetSessionModal()">Annulla</button>
+                <button class="btn" style="width:60%; background:#ef4444; border:1px solid #ef4444; color:#fff; font-weight:800;" onclick="executeAdminResetSession()">Conferma Reset</button>
             </div>
         </div>
     </div>
@@ -4470,6 +4680,7 @@ HTML_TEMPLATE = """
             const botBtn = document.getElementById('botNav-draft');
             const unlockBtn = document.getElementById('adminUnlockBtn');
             const unlockText = document.getElementById('adminBtnText');
+            const btnReset = document.getElementById('btnAdminResetSession');
 
             if (sideBtn) sideBtn.style.display = 'flex';
             if (botBtn) botBtn.style.display = 'flex';
@@ -4477,9 +4688,214 @@ HTML_TEMPLATE = """
             if (isAdmin) {
                 if (unlockBtn) unlockBtn.classList.add('unlocked');
                 if (unlockText) unlockText.textContent = 'Battitore (Attivo)';
+                if (btnReset) btnReset.style.display = 'inline-flex';
             } else {
                 if (unlockBtn) unlockBtn.classList.remove('unlocked');
                 if (unlockText) unlockText.textContent = 'Battitore';
+                if (btnReset) btnReset.style.display = 'none';
+            }
+        }
+
+        /* ─────────────────────────────────────────────────────────────
+           SHARED REAL-TIME SESSION AUTH (LOGIN GATE & SYNC)
+        ───────────────────────────────────────────────────────────── */
+        function checkSessionAuth() {
+            const authRaw = localStorage.getItem('fanta_session_auth');
+            if (!authRaw) {
+                openSessionLoginModal();
+                return false;
+            }
+            try {
+                const auth = JSON.parse(authRaw);
+                if (!auth || !auth.team_id) {
+                    openSessionLoginModal();
+                    return false;
+                }
+                activeProfileId = parseInt(auth.team_id);
+                localStorage.setItem('fanta_active_profile_id', activeProfileId);
+                isAdmin = !!auth.is_admin;
+                if (isAdmin) {
+                    sessionStorage.setItem('fanta_is_admin', 'true');
+                } else {
+                    sessionStorage.removeItem('fanta_is_admin');
+                }
+                updateAdminUI();
+                updateProfileDisplay();
+                return true;
+            } catch (e) {
+                openSessionLoginModal();
+                return false;
+            }
+        }
+
+        function openSessionLoginModal() {
+            populateLoginTeams();
+            const modal = document.getElementById('sessionLoginModal');
+            if (modal) {
+                modal.style.display = 'flex';
+                const pinInput = document.getElementById('loginPinInput');
+                if (pinInput) {
+                    pinInput.value = '';
+                    setTimeout(() => pinInput.focus(), 200);
+                }
+            }
+        }
+
+        function populateLoginTeams() {
+            const select = document.getElementById('loginTeamSelect');
+            if (!select) return;
+            const teams = (auctionState && auctionState.teams && auctionState.teams.length) ? auctionState.teams : currentLeagueSettings.teams;
+            if (!teams || !teams.length) return;
+            select.innerHTML = teams.map(t => `<option value="${t.id}">${t.name} (ID: ${t.id})</option>`).join('');
+            if (activeProfileId) {
+                select.value = String(activeProfileId);
+            }
+        }
+
+        async function submitSessionLogin() {
+            const select = document.getElementById('loginTeamSelect');
+            const pinInput = document.getElementById('loginPinInput');
+            const errDiv = document.getElementById('loginErrorMsg');
+            const teamId = select ? parseInt(select.value) : 1;
+            const pin = pinInput ? pinInput.value.trim() : '';
+
+            if (errDiv) errDiv.style.display = 'none';
+
+            if (!pin) {
+                if (errDiv) {
+                    errDiv.textContent = 'Inserisci il PIN di Lega o Admin per accedere.';
+                    errDiv.style.display = 'block';
+                }
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ pin: pin, team_id: teamId })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.authenticated) {
+                    if (errDiv) {
+                        errDiv.textContent = data.error || 'PIN non valido. Riprova.';
+                        errDiv.style.display = 'block';
+                    }
+                    return;
+                }
+
+                const teamObj = ((auctionState && auctionState.teams) || currentLeagueSettings.teams || []).find(t => t.id === teamId);
+                const teamName = teamObj ? teamObj.name : `Squadra ${teamId}`;
+
+                const sessionData = {
+                    authenticated: true,
+                    role: data.role,
+                    is_admin: !!data.is_admin,
+                    team_id: teamId,
+                    team_name: teamName
+                };
+                localStorage.setItem('fanta_session_auth', JSON.stringify(sessionData));
+                activeProfileId = teamId;
+                localStorage.setItem('fanta_active_profile_id', activeProfileId);
+                isAdmin = !!data.is_admin;
+                if (isAdmin) {
+                    sessionStorage.setItem('fanta_is_admin', 'true');
+                } else {
+                    sessionStorage.removeItem('fanta_is_admin');
+                }
+
+                const modal = document.getElementById('sessionLoginModal');
+                if (modal) modal.style.display = 'none';
+
+                updateAdminUI();
+                updateProfileDisplay();
+                updateLiveAdvice();
+                renderRecent();
+                renderRosterTab();
+                renderStrategyTab();
+                renderTargetsTab();
+
+                showToast(`Benvenuto ${teamName}! Connesso all'Asta Live (${data.role === 'admin' ? 'Admin' : 'Partecipante'})`, 'success');
+            } catch (err) {
+                if (errDiv) {
+                    errDiv.textContent = 'Errore di connessione al server.';
+                    errDiv.style.display = 'block';
+                }
+            }
+        }
+
+        function logoutSession() {
+            if (confirm('Vuoi disconnetterti da questa Fantasquadra?')) {
+                localStorage.removeItem('fanta_session_auth');
+                sessionStorage.removeItem('fanta_is_admin');
+                closeProfileModal();
+                openSessionLoginModal();
+                showToast('Sessione disconnessa. Seleziona la tua squadra per accedere.', 'info');
+            }
+        }
+
+        /* ─────────────────────────────────────────────────────────────
+           ADMIN RESET SESSION (CLOUD RESET VIA UPSTASH)
+        ───────────────────────────────────────────────────────────── */
+        function openResetSessionModal() {
+            const modal = document.getElementById('adminResetSessionModal');
+            const pinInput = document.getElementById('resetAdminPinInput');
+            const errDiv = document.getElementById('resetErrorMsg');
+            if (errDiv) errDiv.style.display = 'none';
+            if (pinInput) pinInput.value = '';
+            if (modal) {
+                modal.style.display = 'flex';
+                setTimeout(() => pinInput && pinInput.focus(), 200);
+            }
+        }
+
+        function closeResetSessionModal() {
+            const modal = document.getElementById('adminResetSessionModal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        async function executeAdminResetSession() {
+            const pinInput = document.getElementById('resetAdminPinInput');
+            const errDiv = document.getElementById('resetErrorMsg');
+            const pin = pinInput ? pinInput.value.trim() : '';
+
+            if (errDiv) errDiv.style.display = 'none';
+
+            if (!pin) {
+                if (errDiv) {
+                    errDiv.textContent = 'Inserisci il PIN Admin per confermare.';
+                    errDiv.style.display = 'block';
+                }
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/session/reset', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ admin_pin: pin })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.success) {
+                    if (errDiv) {
+                        errDiv.textContent = data.error || 'PIN Admin non corretto.';
+                        errDiv.style.display = 'block';
+                    }
+                    return;
+                }
+
+                closeResetSessionModal();
+                auctionState = data.state;
+                localStorage.removeItem('fanta_lab_auction_state');
+                await fetchState();
+                await fetchPlayers();
+                renderTeamSelect();
+                showToast(data.message || 'Asta resettata con successo! Nuova sessione avviata.', 'success', 5000);
+            } catch (err) {
+                if (errDiv) {
+                    errDiv.textContent = 'Errore durante il reset della sessione.';
+                    errDiv.style.display = 'block';
+                }
             }
         }
 
@@ -4488,8 +4904,18 @@ HTML_TEMPLATE = """
                 if (confirm('Vuoi uscire dalla modalità Battitore?')) {
                     isAdmin = false;
                     sessionStorage.removeItem('fanta_is_admin');
+                    const authRaw = localStorage.getItem('fanta_session_auth');
+                    if (authRaw) {
+                        try {
+                            const auth = JSON.parse(authRaw);
+                            auth.is_admin = false;
+                            auth.role = 'participant';
+                            localStorage.setItem('fanta_session_auth', JSON.stringify(auth));
+                        } catch(e) {}
+                    }
                     updateAdminUI();
-                    showToast('Sei tornato in modalità Solo Tracker', 'info');
+                    updateProfileDisplay();
+                    showToast('Sei tornato in modalità Partecipante (Solo Tracker)', 'info');
                     switchTab('targets');
                 }
                 return;
@@ -4513,12 +4939,22 @@ HTML_TEMPLATE = """
             if (data.success) {
                 isAdmin = true;
                 sessionStorage.setItem('fanta_is_admin', 'true');
+                const authRaw = localStorage.getItem('fanta_session_auth');
+                if (authRaw) {
+                    try {
+                        const auth = JSON.parse(authRaw);
+                        auth.is_admin = true;
+                        auth.role = 'admin';
+                        localStorage.setItem('fanta_session_auth', JSON.stringify(auth));
+                    } catch(e) {}
+                }
                 closeAdminModal();
                 updateAdminUI();
-                showToast('Accesso Battitore effettuato!', 'success');
+                updateProfileDisplay();
+                showToast('Accesso Battitore Admin effettuato!', 'success');
                 switchTab('draft');
             } else {
-                showToast(data.error || 'Password non valida.', 'danger');
+                showToast(data.error || 'Password o PIN Admin non valido.', 'danger');
             }
         }
 
@@ -4546,6 +4982,7 @@ HTML_TEMPLATE = """
             await fetchState();
             await fetchPlayers();
             fetchAIStatus();
+            checkSessionAuth();
             updateAdminUI();
             updateProfileDisplay();
             renderTeamSelect();
@@ -4563,22 +5000,28 @@ HTML_TEMPLATE = """
                 }
             }
 
-            // Periodic live refresh polling for real-time updates (every 4s)
+            // Periodic live refresh polling for real-time updates (every 3s)
             setInterval(async () => {
-                const res = await fetch('/api/state');
-                const data = await res.json();
-                if (JSON.stringify(data.state) !== JSON.stringify(auctionState)) {
-                    auctionState = data.state;
-                    if (data.market_index) updateMarketBadge(data.market_index);
-                    updateHeader();
-                    updateLiveAdvice();
-                    renderRecent();
-                    renderRosterTab();
-                    renderTargetsTab();
-                    renderStrategyTab();
-                    renderListone();
+                try {
+                    const res = await fetch('/api/state');
+                    if (!res.ok) return;
+                    const data = await res.json();
+                    if (data.state && JSON.stringify(data.state) !== JSON.stringify(auctionState)) {
+                        auctionState = data.state;
+                        if (data.market_index) updateMarketBadge(data.market_index);
+                        updateHeader();
+                        updateProfileDisplay();
+                        updateLiveAdvice();
+                        renderRecent();
+                        renderRosterTab();
+                        renderTargetsTab();
+                        renderStrategyTab();
+                        renderListone();
+                    }
+                } catch (e) {
+                    console.warn('Real-time sync poll error:', e);
                 }
-            }, 4000);
+            }, 3000);
         }
 
         async function fetchState() {
@@ -4683,12 +5126,25 @@ HTML_TEMPLATE = """
         function updateProfileDisplay() {
             const team = (auctionState.teams || []).find(t => t.id === activeProfileId) || (auctionState.teams || [])[0];
             if (team) {
-                document.getElementById('headerProfileName').textContent = team.name;
+                const headerName = document.getElementById('headerProfileName');
+                if (headerName) headerName.textContent = team.name;
                 const sideName = document.getElementById('sideProfileName');
                 const sideBudget = document.getElementById('sideProfileBudget');
+                const roleBadge = document.getElementById('headerUserRoleBadge');
                 const bTotal = auctionState.budget_total || leagueBudget || 1000;
                 if (sideName) sideName.textContent = team.name;
                 if (sideBudget) sideBudget.textContent = `${team.remaining} cr residui (su ${bTotal} cr | Max: ${team.max_bid} cr)`;
+                if (roleBadge) {
+                    if (isAdmin) {
+                        roleBadge.textContent = 'ADMIN';
+                        roleBadge.style.background = 'rgba(239,68,68,0.2)';
+                        roleBadge.style.color = '#ef4444';
+                    } else {
+                        roleBadge.textContent = 'PARTECIPANTE';
+                        roleBadge.style.background = 'rgba(56,189,248,0.2)';
+                        roleBadge.style.color = 'var(--primary)';
+                    }
+                }
             }
         }
 
